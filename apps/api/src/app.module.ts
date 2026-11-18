@@ -6,10 +6,13 @@ import { AuthGuard, PRISMA } from "./auth/auth.guard";
 import { DevTokenVerifier, TOKEN_VERIFIER } from "./auth/token-verifier";
 import { HealthController } from "./health/health.controller";
 import { MeController } from "./me.controller";
+import { EventBus } from "./realtime/event-bus";
+import { EventsController } from "./realtime/events.controller";
+import { StorageService } from "./storage/storage.service";
 
 @Global()
 @Module({
-  controllers: [HealthController, MeController],
+  controllers: [HealthController, MeController, EventsController],
   providers: [
     {
       provide: PRISMA,
@@ -26,7 +29,9 @@ import { MeController } from "./me.controller";
     },
     { provide: APP_GUARD, useClass: AuthGuard },
     AuditService,
+    EventBus,
+    StorageService,
   ],
-  exports: [PRISMA, AuditService],
+  exports: [PRISMA, AuditService, EventBus, StorageService],
 })
 export class AppModule {}

@@ -1,26 +1,33 @@
 # M0 — Foundation status
 
+See `docs/adr/0001-runtime.md` for the Bun/NestJS go/no-go evidence and gotchas, and `docs/permissions.md`
+(generated) for the role/permission matrix. Overall plan: V1 implementation plan (M0→M5).
+
 ## Done
 - Turborepo + Bun workspaces: `apps/{api,worker,staff-web,patient-portal}`, `packages/{db,ui,contracts,validation,config}`.
-- PostgreSQL 16 (docker, port 5433) with Prisma migrations; RLS on `Tenant`, `Branch`, `Membership`, `AuditEvent`
-  (`FORCE ROW LEVEL SECURITY`, app role `dentalos_app` is NOSUPERUSER/NOBYPASSRLS, fails closed without `app.tenant_id`).
-- `withTenant()` sets tenant context per transaction (`set_config(..., true)`), rejects non-UUID ids.
-- API (NestJS on Bun): token verification abstraction, MFA required, membership resolved server-side
-  (client `x-tenant-id` is only a hint), role decorator, branch-scope helper, append-only audit service, health live/ready, graceful shutdown.
-- Design tokens + Button/Badge; CI workflow (lint, migrate, typecheck, test).
-
-## Bun/NestJS POC (PRD 6.2) — partial
-Proven under Bun 1.3.13: Nest HTTP (express adapter), DI with decorator metadata, jose JWT verification,
-Prisma connectivity/transactions/migrations, health checks, graceful shutdown hook, integration tests via `bun test`.
-NOT yet proven: background jobs/retries, file upload/download, WebSocket/SSE, structured logging/tracing/error monitoring,
-container deployment. Fallback to Node.js LTS remains the decision if any of these fail.
+- PostgreSQL 16 + Prisma migrations `0001–0003`. RLS on every table (`FORCE ROW LEVEL SECURITY`); app role `dentalos_app`
+  is NOSUPERUSER/NOBYPASSRLS and fails closed without `app.tenant_id`. **Meta-test fails CI if any table lacks forced RLS + a policy.**
+- `withTenant()`: transaction-local tenant (+ optional actor) context, rejects non-UUID ids.
+- Audit: append-only for the app role, **per-tenant SHA-256 hash chain** (trigger) and `verify_audit_chain(tenant)`; tamper test.
+- Membership: `roles[]` (a user may be owner + dentist) and explicit `orgWide` flag.
+- `@dentalos/contracts`: code-first permission catalogue, `can()` / `branchFilter()`, generated matrix doc, 23 table-driven tests.
+- API (NestJS on Bun): token-verifier abstraction, MFA required, server-resolved membership, `@Can('perm')`, health, SSE
+  (`/events`, tenant+branch filtered), pino logging with redaction + request ids, S3 presign service (tenant-prefixed keys).
+- Worker: pg-boss job helpers (tenant envelope, retries, idempotent enqueue) with tests.
+- `infra/Dockerfile.api` builds and runs healthy; SIGTERM exits 0. CI: biome, migrate, typecheck, test, image build.
 
 ## Not done in M0 yet
-- Managed IdP (provider not chosen; `DevTokenVerifier` is dev/test only), step-up auth, patient OTP.
-- Full permission matrix (PRD 12.2), break-glass access.
-- Tamper-resistance of audit beyond append-only grants (e.g. hash chaining).
-- Dockerfile, IaC, staging environments, OpenAPI generation, remaining design-system components, app shell.
+- Real S3/MinIO round trip; OpenTelemetry tracing/error monitoring; soak test (ADR exit criteria).
+- Managed IdP verifier (Cognito) and step-up auth; patient OTP/portal principal (models land with `Patient` in M1).
+- Privileged DB role + tenant provisioning path; AsyncLocalStorage tenant context helper (arrive with first real services, M1).
+- Worker Dockerfile/entrypoint wiring, OpenAPI generation, Terraform/staging, backup job + restore drill.
+- Design-system components beyond Button/Badge, and the app shell.
 
 ## Local dev
-`bun install && bun run db:up && DATABASE_URL=postgresql://postgres:postgres@localhost:5433/dentalos bunx --cwd packages/db prisma migrate deploy`
-then `bun run test`. API needs `DATABASE_URL` (app role) and `DEV_JWT_SECRET`.
+```
+bun install && bun run db:up
+cd packages/db && DATABASE_URL=postgresql://postgres:postgres@localhost:5433/dentalos bunx prisma migrate deploy && bunx prisma generate
+cd ../.. && DATABASE_URL=postgresql://postgres:postgres@localhost:5433/dentalos bun run test
+```
+API env: `DATABASE_URL` (app role), `DEV_JWT_SECRET`. Start the API **from `apps/api`** (see ADR gotcha 1).
+Regenerate the permission doc: `bun run --cwd packages/contracts docs:permissions`.

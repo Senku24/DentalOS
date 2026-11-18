@@ -1,0 +1,9 @@
+**/node_modules
+.git
+.turbo
+.npm-cache
+.next
+.claude
+**/dist
+**/*.log
+.env*

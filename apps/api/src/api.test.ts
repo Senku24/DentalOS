@@ -101,3 +101,57 @@ test("@Can: receptionist is denied an org-level route, owner allowed", async () 
   });
   expect(owner.status).toBe(200);
 });
+
+// ---- realtime (SSE) ----
+import { EventBus } from "./realtime/event-bus";
+
+const readUntil = async (res: Response, needle: string, ms = 3000) => {
+  if (!res.body) throw new Error("no response body");
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const r = await Promise.race([reader.read(), Bun.sleep(300).then(() => null)]);
+    if (r && !r.done) buf += dec.decode(r.value);
+    if (buf.includes(needle)) break;
+  }
+  reader.cancel().catch(() => {});
+  return buf;
+};
+
+test("SSE delivers same-tenant events and never another tenant's", async () => {
+  const bus = app.get(EventBus);
+  const res = await get("/events", {
+    authorization: `Bearer ${await token("user-a")}`,
+    "x-tenant-id": tA,
+  });
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/event-stream");
+  const pending = readUntil(res, "appointment.checked_in");
+  await Bun.sleep(150);
+  bus.publish({ tenantId: tB, type: "leak.other_tenant", data: { x: 1 } });
+  bus.publish({ tenantId: tA, branchId: "b1", type: "appointment.checked_in", data: { id: "a1" } });
+  const text = await pending;
+  expect(text).toContain("appointment.checked_in");
+  expect(text).not.toContain("leak.other_tenant");
+});
+
+test("SSE respects branch scope for non-org-wide principals", async () => {
+  const bus = app.get(EventBus);
+  const res = await get("/events", {
+    authorization: `Bearer ${await token("user-rec")}`,
+    "x-tenant-id": tA,
+  });
+  const pending = readUntil(res, "visible.b1");
+  await Bun.sleep(150);
+  bus.publish({ tenantId: tA, branchId: "b2", type: "hidden.b2", data: {} });
+  bus.publish({ tenantId: tA, branchId: "b1", type: "visible.b1", data: {} });
+  const text = await pending;
+  expect(text).toContain("visible.b1");
+  expect(text).not.toContain("hidden.b2");
+});
+
+test("SSE without auth -> 401", async () => {
+  expect((await get("/events", { "x-tenant-id": tA })).status).toBe(401);
+});
