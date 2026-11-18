@@ -59,7 +59,9 @@ export function validate<S extends z.ZodType>(
   raw: unknown,
 ): ValidationResult<z.output<S>> {
   const r = schema.safeParse(cleanEmpty(raw));
-  return r.success ? { ok: true, data: r.data } : { ok: false, errors: fieldErrorsFrom(r.error.issues) };
+  return r.success
+    ? { ok: true, data: r.data }
+    : { ok: false, errors: fieldErrorsFrom(r.error.issues) };
 }
 
 /** Rupee input ("1,250.50", "₹ 999") → integer paise without float drift. null when not a number. */
@@ -77,4 +79,24 @@ export function paiseToRupeeInput(paise: number): string {
   const r = Math.floor(paise / 100);
   const p = paise % 100;
   return p === 0 ? String(r) : `${r}.${String(p).padStart(2, "0")}`;
+}
+
+/**
+ * PATCH bodies carry only what changed: the API applies exactly the keys it receives (no defaults).
+ * Compares parsed form output with the current record; null and undefined count as equal, and
+ * objects/arrays compare by JSON value.
+ */
+export function changedFields<T extends Record<string, unknown>>(
+  next: T,
+  current: Record<string, unknown>,
+): Partial<T> {
+  const out: Partial<T> = {};
+  const same = (a: unknown, b: unknown) =>
+    (a ?? null) === (b ?? null) ||
+    (typeof a === "object" && a !== null && JSON.stringify(a) === JSON.stringify(b));
+  for (const [k, v] of Object.entries(next)) {
+    if (v === undefined) continue;
+    if (!same(v, current[k])) (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
 }

@@ -8,9 +8,8 @@ const matches = (current: string, href: string) =>
 
 /** Only the most specific matching item is current (e.g. /patients/duplicates vs /patients). */
 const activeHref = (current: string, items: NavItem[]) =>
-  items
-    .filter((it) => matches(current, it.href))
-    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+  items.filter((it) => matches(current, it.href)).sort((a, b) => b.href.length - a.href.length)[0]
+    ?.href;
 
 export function Brand({ name }: { name: string }) {
   return (

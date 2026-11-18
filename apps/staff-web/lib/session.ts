@@ -7,7 +7,7 @@ import {
   can,
   isRole,
 } from "@dentalos/contracts";
-import { STAFF_DIRECTORY, branches as FIXTURE_BRANCHES } from "./api/fixtures";
+import { branches as FIXTURE_BRANCHES, STAFF_DIRECTORY } from "./api/fixtures";
 
 /**
  * DEV-ONLY stand-in for the real session (Cognito + /me, next M0 item). The server remains the
@@ -38,9 +38,12 @@ export const DEV_USER = {
 /** Display-only permission check against the DEV principal. Never a security boundary. */
 export const canDo = (perm: Permission, resource?: Resource) => can(DEV_PRINCIPAL, perm, resource);
 
-/** Branches the DEV principal may act in (all when orgWide). */
-export const scopedBranchIds = (all: { id: string }[]) =>
-  DEV_PRINCIPAL.orgWide ? all.map((b) => b.id) : DEV_PRINCIPAL.branchScope;
+/** Active branches the DEV principal may act in (all active ones when orgWide). Used to default forms. */
+export const scopedBranchIds = (all: { id: string; active?: boolean }[]) =>
+  all
+    .filter((b) => b.active !== false)
+    .map((b) => b.id)
+    .filter((id) => DEV_PRINCIPAL.orgWide || DEV_PRINCIPAL.branchScope.includes(id));
 
 /** Human label for a staff user id. The membership API returns ids only (see Flags). */
 export const userLabel = (userId: string) => STAFF_DIRECTORY[userId]?.name ?? userId;

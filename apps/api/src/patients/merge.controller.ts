@@ -36,9 +36,9 @@ export class DuplicateCandidatesController {
   dismiss(
     @CurrentPrincipal() p: Principal,
     @Param("id", new ParseUUIDPipe()) id: string,
-    @Body(new ZodPipe(dismissDuplicateRequest)) _body: unknown,
+    @Body(new ZodPipe(dismissDuplicateRequest)) body: { reason: string },
   ) {
-    return this.duplicates.dismiss(p, id);
+    return this.duplicates.dismiss(p, id, body.reason);
   }
 }
 

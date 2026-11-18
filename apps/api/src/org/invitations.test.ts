@@ -141,9 +141,7 @@ test("accept: expiry, revocation, wrong tenant, existing member, auth + MFA", as
     404,
   );
   // Existing member -> 409, invitation stays usable.
-  expect((await accept(manager, { tenantId: tA, token: ok.body.token }, okEmail)).status).toBe(
-    409,
-  );
+  expect((await accept(manager, { tenantId: tA, token: ok.body.token }, okEmail)).status).toBe(409);
   // No token / no MFA / bad body.
   const noAuth = await fetch(`${h.base}/invitations/accept`, {
     method: "POST",
@@ -172,9 +170,9 @@ test("accept: the token's verified email must match the invitation (403 email_mi
   expect(none.status).toBe(403);
   expect((await none.json()).error).toBe("email_mismatch");
   // Nothing was consumed: the invited address can still accept.
-  expect((await h.admin.staffInvitation.findUniqueOrThrow({ where: { id: r.body.id } })).status).toBe(
-    "PENDING",
-  );
+  expect(
+    (await h.admin.staffInvitation.findUniqueOrThrow({ where: { id: r.body.id } })).status,
+  ).toBe("PENDING");
   expect((await accept(uid("invitee"), body, e)).status).toBe(200);
 });
 

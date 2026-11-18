@@ -9,7 +9,11 @@ export default function OrganisationPage() {
       <PageHeader
         title="Organisation"
         description="Settings that apply to every branch, and your onboarding progress"
-        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Administration" }, { label: "Organisation" }]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Administration" },
+          { label: "Organisation" },
+        ]}
       />
       <OrganisationClient />
     </>

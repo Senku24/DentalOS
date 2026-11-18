@@ -209,6 +209,18 @@ describe("branch price overrides", () => {
     expect(hist.body.items.find((o: { id: string }) => o.id === set1.body.override.id).reason).toBe(
       "Local competition",
     );
+    // Closing reasons are persisted (superseded vs cleared).
+    const ended = await h.admin.branchPriceOverride.findMany({
+      where: { id: { in: [set1.body.override.id, set2.body.override.id] } },
+    });
+    expect(ended.find((o) => o.id === set1.body.override.id)).toMatchObject({
+      endedBy: manager,
+      endedReason: "superseded: Revised",
+    });
+    expect(ended.find((o) => o.id === set2.body.override.id)).toMatchObject({
+      endedBy: manager,
+      endedReason: "Back to central",
+    });
 
     const audit = await h.admin.auditEvent.findMany({
       where: {

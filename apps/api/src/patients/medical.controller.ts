@@ -2,9 +2,9 @@ import {
   type AddAlertRequest,
   type AddAllergyRequest,
   type AddMedicalHistoryRequest,
+  type IncludeResolvedQuery,
   addAlertRequest,
   addAllergyRequest,
-  type IncludeResolvedQuery,
   addMedicalHistoryRequest,
   includeResolvedQuery,
   resolveRequest,
@@ -66,9 +66,9 @@ export class MedicalController {
     @CurrentPrincipal() p: Principal,
     @Id() id: string,
     @Param("allergyId", new ParseUUIDPipe()) allergyId: string,
-    @Body(new ZodPipe(resolveRequest)) _body: unknown,
+    @Body(new ZodPipe(resolveRequest)) body: { reason?: string },
   ) {
-    return this.medical.resolveAllergy(p, id, allergyId);
+    return this.medical.resolveAllergy(p, id, allergyId, body.reason);
   }
 
   @Can("medical:read")
@@ -98,8 +98,8 @@ export class MedicalController {
     @CurrentPrincipal() p: Principal,
     @Id() id: string,
     @Param("alertId", new ParseUUIDPipe()) alertId: string,
-    @Body(new ZodPipe(resolveRequest)) _body: unknown,
+    @Body(new ZodPipe(resolveRequest)) body: { reason?: string },
   ) {
-    return this.medical.resolveAlert(p, id, alertId);
+    return this.medical.resolveAlert(p, id, alertId, body.reason);
   }
 }

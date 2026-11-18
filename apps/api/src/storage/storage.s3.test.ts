@@ -79,6 +79,13 @@ run("presigned POST upload then presigned GET download returns the same bytes", 
   const head = await admin.send(new HeadObjectCommand({ Bucket: bucket, Key: up.key }));
   expect(head.ContentLength).toBe("hello dental".length);
 
+  expect(await storage.head(principal(T1), up.key)).toEqual({
+    contentLength: "hello dental".length,
+    contentType: "text/plain",
+  });
+  expect(await storage.head(principal(T1), `t/${T1}/missing-object`)).toBeNull();
+  await expect(storage.head(principal(T2), up.key)).rejects.toThrow(); // foreign tenant prefix
+
   const url = await storage.presignDownload(principal(T1), up.key);
   const dl = await fetch(url);
   expect(dl.status).toBe(200);

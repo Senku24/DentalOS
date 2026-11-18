@@ -1,13 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import type { Principal } from "../auth/roles";
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const DOWNLOAD_TTL_SECONDS = 60;
-const UPLOAD_TTL_SECONDS = 300;
+/** Lifetime of a presigned GET (`presignDownload`). */
+export const DOWNLOAD_TTL_SECONDS = 60;
+/** Lifetime of a presigned POST (`presignUpload`). */
+export const UPLOAD_TTL_SECONDS = 300;
+
+/** Result of `StorageService.head` (object metadata, no body). */
+export interface ObjectHead {
+  contentLength: number;
+  contentType?: string;
+}
 
 /**
  * Private-bucket access only through short-lived presigned URLs minted AFTER the caller has been
@@ -50,6 +58,22 @@ export class StorageService {
     return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
       expiresIn: DOWNLOAD_TTL_SECONDS,
     });
+  }
+
+  /**
+   * HEAD the object (e.g. to verify an upload landed before confirming it). Returns null when absent.
+   * Tenant prefix enforced like the presign methods. Network I/O: never call inside `withTenant`.
+   */
+  async head(p: Principal, key: string): Promise<ObjectHead | null> {
+    this.assertOwnKey(p, key);
+    try {
+      const r = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return { contentLength: Number(r.ContentLength ?? 0), contentType: r.ContentType };
+    } catch (e) {
+      const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 404 || (e as Error).name === "NotFound") return null;
+      throw e;
+    }
   }
 
   /** Presigned POST so the size limit is enforced by the storage layer, not trusted from the client. */

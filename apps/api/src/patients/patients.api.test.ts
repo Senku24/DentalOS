@@ -387,6 +387,9 @@ describe("duplicate detection", () => {
     expect(d.status).toBe(200);
     expect(d.body.status).toBe("DISMISSED");
     expect(
+      (await admin.duplicateCandidate.findUniqueOrThrow({ where: { id: cand.id } })).reviewReason,
+    ).toBe("Twins sharing a phone");
+    expect(
       (await call(MANAGER, "POST", `/duplicate-candidates/${cand.id}/dismiss`, { reason: "again" }))
         .status,
     ).toBe(409);
@@ -485,9 +488,14 @@ describe("medical history, allergies, alerts", () => {
       severity: "HIGH",
     });
     expect(a.status).toBe(201);
-    const res = await call(DENTIST, "POST", `/patients/${pid}/allergies/${a.body.id}/resolve`, {});
+    const res = await call(DENTIST, "POST", `/patients/${pid}/allergies/${a.body.id}/resolve`, {
+      reason: "Tolerated amoxicillin",
+    });
     expect(res.status).toBe(200);
     expect(res.body.active).toBe(false);
+    expect(
+      (await admin.patientAllergy.findUniqueOrThrow({ where: { id: a.body.id } })).resolutionReason,
+    ).toBe("Tolerated amoxicillin");
     expect(
       (await call(DENTIST, "POST", `/patients/${pid}/allergies/${a.body.id}/resolve`, {})).status,
     ).toBe(409);
@@ -502,8 +510,15 @@ describe("medical history, allergies, alerts", () => {
     expect(al.status).toBe(201);
     expect((await call(REC, "GET", `/patients/${pid}/alerts`)).body.items.length).toBe(1);
     expect(
-      (await call(REC, "POST", `/patients/${pid}/alerts/${al.body.id}/resolve`, {})).status,
+      (
+        await call(REC, "POST", `/patients/${pid}/alerts/${al.body.id}/resolve`, {
+          reason: "Stopped",
+        })
+      ).status,
     ).toBe(200);
+    expect(
+      (await admin.patientAlert.findUniqueOrThrow({ where: { id: al.body.id } })).resolutionReason,
+    ).toBe("Stopped");
     expect(
       (await call(REC, "POST", `/patients/${pid}/alerts`, { title: "x", severity: "BAD" })).status,
     ).toBe(400);
@@ -541,8 +556,14 @@ describe("consent and communication preferences", () => {
       (await call(REC, "POST", `/patients/${pid}/consents`, { ...base, type: "NOPE" })).status,
     ).toBe(400);
 
-    const w = await call(REC, "POST", `/patients/${pid}/consents/${ok.body.id}/withdraw`, {});
+    const w = await call(REC, "POST", `/patients/${pid}/consents/${ok.body.id}/withdraw`, {
+      reason: "Patient request",
+    });
     expect(w.status).toBe(200);
+    expect(
+      (await admin.patientConsent.findUniqueOrThrow({ where: { id: ok.body.id } }))
+        .withdrawalReason,
+    ).toBe("Patient request");
     expect(w.body.status).toBe("WITHDRAWN");
     expect(w.body.withdrawnAt).toBeString();
     expect(
@@ -831,7 +852,11 @@ describe("controlled merge", () => {
     expect(await auditCount("patient.merge", rec.id)).toBe(1);
 
     const pair = await admin.duplicateCandidate.findUniqueOrThrow({ where: { id: pairId } });
-    expect(pair).toMatchObject({ status: "MERGED", reviewedBy: MANAGER });
+    expect(pair).toMatchObject({
+      status: "MERGED",
+      reviewedBy: MANAGER,
+      reviewReason: "Same person registered twice",
+    });
     // The merged↔third pair now concerns survivor↔third (ordered A<B).
     const [a, b] = [survivor.id, third.id].sort();
     const moved = await admin.duplicateCandidate.findUnique({

@@ -87,6 +87,11 @@ const CODE_MESSAGES: Record<string, string> = {
   invitation_not_pending: "This invitation is no longer pending.",
   invitation_not_resendable: "This invitation can no longer be resent.",
   already_member: "This person is already a member of the organisation.",
+  email_mismatch:
+    "This invitation was sent to a different email address. Sign in with the invited email, or ask for a new invitation.",
+  invitation_expired: "This invitation has expired. Ask an owner to resend it.",
+  invitation_revoked: "This invitation was revoked.",
+  invitation_accepted: "This invitation has already been used.",
   invalid_settings: "The organisation settings are invalid.",
   conflict: "That conflicts with an existing record (for example a duplicate code).",
   possible_duplicates: "Possible duplicate patients were found. Review them before creating.",
@@ -130,7 +135,14 @@ export function mapHttpError(status: number, body: unknown): ApiError {
     }
   }
   const message = (code && CODE_MESSAGES[code]) ?? KIND_MESSAGES[kind];
-  return new ApiError({ kind, status, message, code, fieldErrors, body: b as Record<string, unknown> });
+  return new ApiError({
+    kind,
+    status,
+    message,
+    code,
+    fieldErrors,
+    body: b as Record<string, unknown>,
+  });
 }
 
 export function networkError(): ApiError {

@@ -73,9 +73,11 @@ export class AssignmentsController {
     @CurrentPrincipal() p: Principal,
     @Query(new ZodPipe(listAssignmentsQuery)) q: ListAssignmentsQuery,
   ) {
-    const today = dateFromDay(todayIn("Asia/Kolkata"));
-    const rows = await withTenant(this.prisma, p.tenantId, (tx) =>
-      tx.dentistBranchAssignment.findMany({
+    // "current" is judged in each branch's own time zone: the DB pre-filter uses the earliest calendar
+    // date on Earth (UTC-12), then rows are re-checked against their branch's local "today".
+    const earliestToday = dateFromDay(todayIn("Etc/GMT+12"));
+    const { rows, zones } = await withTenant(this.prisma, p.tenantId, async (tx) => {
+      const rows = await tx.dentistBranchAssignment.findMany({
         where: {
           tenantId: p.tenantId,
           userId: q.userId,
@@ -83,15 +85,32 @@ export class AssignmentsController {
           AND: [
             branchWhere(p),
             q.status === "current"
-              ? { OR: [{ effectiveTo: null }, { effectiveTo: { gt: today } }] }
+              ? { OR: [{ effectiveTo: null }, { effectiveTo: { gt: earliestToday } }] }
               : {},
           ],
         },
         orderBy: [{ userId: "asc" }, { effectiveFrom: "desc" }, { createdAt: "desc" }],
         take: 1000,
-      }),
-    );
-    return { items: rows.map(toAssignment) };
+      });
+      const branchIds = [...new Set(rows.filter((r) => r.effectiveTo).map((r) => r.branchId))];
+      const zones = new Map(
+        q.status === "current" && branchIds.length
+          ? (
+              await tx.branch.findMany({
+                where: { tenantId: p.tenantId, id: { in: branchIds } },
+                select: { id: true, timezone: true },
+              })
+            ).map((b) => [b.id, b.timezone] as const)
+          : [],
+      );
+      return { rows, zones };
+    });
+    const now = new Date();
+    const current = (a: DentistBranchAssignment) =>
+      !a.effectiveTo ||
+      dayFromDate(a.effectiveTo) > todayIn(zones.get(a.branchId) ?? "Asia/Kolkata", now);
+    const items = q.status === "current" ? rows.filter(current) : rows;
+    return { items: items.map(toAssignment) };
   }
 
   @Can("staff:manage")

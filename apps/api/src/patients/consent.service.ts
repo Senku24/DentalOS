@@ -117,8 +117,8 @@ export class ConsentService {
     return toConsent(c);
   }
 
-  /** Only a GRANTED consent can be withdrawn. Reason is not stored (no column) — see Flags. */
-  async withdraw(p: Principal, patientId: string, consentId: string) {
+  /** Only a GRANTED consent can be withdrawn. The reason is stored as `withdrawalReason`. */
+  async withdraw(p: Principal, patientId: string, consentId: string, reason?: string) {
     const c = await withTenant(
       this.prisma,
       p.tenantId,
@@ -131,7 +131,7 @@ export class ConsentService {
           throw new ConflictException({ error: "consent_not_granted", status: cur.status });
         return tx.patientConsent.update({
           where: { id: consentId },
-          data: { status: "WITHDRAWN", withdrawnAt: new Date() },
+          data: { status: "WITHDRAWN", withdrawnAt: new Date(), withdrawalReason: reason ?? null },
         });
       },
       { actorId: p.userId },

@@ -1,6 +1,6 @@
 "use client";
-import { STAFF_ROLES, type BranchResponse } from "@dentalos/validation";
 import { Checkbox, CheckboxGroup } from "@dentalos/ui";
+import { type BranchResponse, STAFF_ROLES } from "@dentalos/validation";
 import { humanize } from "../lib/format";
 
 const ROLE_HINT: Record<(typeof STAFF_ROLES)[number], string> = {

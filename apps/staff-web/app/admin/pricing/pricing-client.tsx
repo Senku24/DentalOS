@@ -1,5 +1,4 @@
 "use client";
-import { clearPriceOverrideRequest, setPriceOverrideRequest } from "@dentalos/validation";
 import {
   Alert,
   Badge,
@@ -15,8 +14,15 @@ import {
   TextareaField,
   Timeline,
 } from "@dentalos/ui";
+import { clearPriceOverrideRequest, setPriceOverrideRequest } from "@dentalos/validation";
 import { useEffect, useState } from "react";
-import { BranchOptions, Loadable, MockNotice, RequirePermission, useBranches } from "../../../components/common";
+import {
+  BranchOptions,
+  Loadable,
+  MockNotice,
+  RequirePermission,
+  useBranches,
+} from "../../../components/common";
 import { api } from "../../../lib/api/endpoints";
 import { errorStateFor } from "../../../lib/api/errors";
 import { useMutation, useQuery } from "../../../lib/api/hooks";
@@ -43,11 +49,18 @@ function Inner() {
   }, [branches, branchId]);
   const list = useQuery(() => api.catalog.priceList(branchId), [branchId], Boolean(branchId));
   const canOverride = Boolean(branchId) && canDo("price:override", { branchId });
-  const [overriding, setOverriding] = useState<{ item: PriceListItem; mode: "set" | "clear" } | null>(null);
+  const [overriding, setOverriding] = useState<{
+    item: PriceListItem;
+    mode: "set" | "clear";
+  } | null>(null);
   const [history, setHistory] = useState<PriceListItem | null>(null);
 
   const columns: ColumnDef<PriceListItem, unknown>[] = [
-    { accessorKey: "code", header: "Code", cell: ({ getValue }) => <span className="dos-mono">{String(getValue())}</span> },
+    {
+      accessorKey: "code",
+      header: "Code",
+      cell: ({ getValue }) => <span className="dos-mono">{String(getValue())}</span>,
+    },
     { accessorKey: "name", header: "Service" },
     {
       accessorKey: "basePricePaise",
@@ -78,7 +91,11 @@ function Inner() {
       accessorKey: "source",
       header: "Source",
       cell: ({ getValue }) =>
-        getValue() === "OVERRIDE" ? <Badge tone="warning">Branch override</Badge> : <Badge tone="neutral">Central</Badge>,
+        getValue() === "OVERRIDE" ? (
+          <Badge tone="warning">Branch override</Badge>
+        ) : (
+          <Badge tone="neutral">Central</Badge>
+        ),
     },
     {
       id: "actions",
@@ -93,12 +110,20 @@ function Inner() {
             </Button>
             {canOverride ? (
               <>
-                <Button size="sm" variant="secondary" onClick={() => setOverriding({ item: r, mode: "set" })}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setOverriding({ item: r, mode: "set" })}
+                >
                   {r.source === "OVERRIDE" ? "Change" : "Override"}
                   <span className="dos-sr-only"> price for {r.name}</span>
                 </Button>
                 {r.source === "OVERRIDE" ? (
-                  <Button size="sm" variant="ghost" onClick={() => setOverriding({ item: r, mode: "clear" })}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setOverriding({ item: r, mode: "clear" })}
+                  >
                     Revert<span className="dos-sr-only"> {r.name} to central price</span>
                   </Button>
                 ) : null}
@@ -117,19 +142,28 @@ function Inner() {
       <PageHeader
         title="Branch pricing"
         description="Effective prices per branch. Overrides need a reason and are kept in an audited history."
-        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Administration" }, { label: "Branch pricing" }]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Administration" },
+          { label: "Branch pricing" },
+        ]}
       />
       <div className="dos-stack">
         <MockNotice />
         <div className="dos-toolbar">
-          <SelectField label="Branch" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <SelectField
+            label="Branch"
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+          >
             <BranchOptions branches={branches} />
           </SelectField>
         </div>
         {branchId && !canOverride ? (
           <Alert tone="info">
-            You can view prices for {name(branchId)}. Changing them needs the price override permission for this
-            branch{DEV_PRINCIPAL.orgWide ? "" : " (managers: your own branches only)"}.
+            You can view prices for {name(branchId)}. Changing them needs the price override
+            permission for this branch
+            {DEV_PRINCIPAL.orgWide ? "" : " (managers: your own branches only)"}.
           </Alert>
         ) : null}
         {list.data ? (
@@ -165,7 +199,12 @@ function Inner() {
         />
       ) : null}
       {history ? (
-        <HistoryDrawer item={history} branchId={branchId} branchName={name} onClose={() => setHistory(null)} />
+        <HistoryDrawer
+          item={history}
+          branchId={branchId}
+          branchName={name}
+          onClose={() => setHistory(null)}
+        />
       ) : null}
     </>
   );
@@ -191,11 +230,20 @@ function OverrideDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const set = useMutation(
     (b: ReturnType<typeof setPriceOverrideRequest.parse>) => api.catalog.setOverride(item.id, b),
-    { success: "Branch price updated", onSuccess: onDone, onError: (e) => setErrors(e.fieldErrors) },
+    {
+      success: "Branch price updated",
+      onSuccess: onDone,
+      onError: (e) => setErrors(e.fieldErrors),
+    },
   );
   const clear = useMutation(
-    (b: ReturnType<typeof clearPriceOverrideRequest.parse>) => api.catalog.clearOverride(item.id, b),
-    { success: "Reverted to central price", onSuccess: onDone, onError: (e) => setErrors(e.fieldErrors) },
+    (b: ReturnType<typeof clearPriceOverrideRequest.parse>) =>
+      api.catalog.clearOverride(item.id, b),
+    {
+      success: "Reverted to central price",
+      onSuccess: onDone,
+      onError: (e) => setErrors(e.fieldErrors),
+    },
   );
   const submit = () => {
     if (mode === "clear") {
@@ -204,7 +252,8 @@ function OverrideDialog({
       return void clear.run(r.data);
     }
     const paise = rupeesToPaise(price);
-    if (paise === null) return setErrors({ pricePaise: "Enter an amount in rupees, e.g. 1500 or 1500.50" });
+    if (paise === null)
+      return setErrors({ pricePaise: "Enter an amount in rupees, e.g. 1500 or 1500.50" });
     const r = validate(setPriceOverrideRequest, { branchId, pricePaise: paise, reason });
     if (!r.ok) return setErrors(r.errors);
     void set.run(r.data);
@@ -214,7 +263,9 @@ function OverrideDialog({
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={mode === "set" ? `Override price — ${item.name}` : `Revert ${item.name} to central price`}
+      title={
+        mode === "set" ? `Override price — ${item.name}` : `Revert ${item.name} to central price`
+      }
       description={`${branchName} · central price ${formatPaise(item.basePricePaise)}`}
       footer={
         <>
@@ -235,13 +286,17 @@ function OverrideDialog({
             required
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            hint={preview !== null ? `Patients at this branch will be charged ${formatPaise(preview)}` : undefined}
+            hint={
+              preview !== null
+                ? `Patients at this branch will be charged ${formatPaise(preview)}`
+                : undefined
+            }
             error={errors.pricePaise}
           />
         ) : (
           <p style={{ margin: 0 }}>
-            The branch will charge {formatPaise(item.basePricePaise)} from now on. The current override stays in the
-            history.
+            The branch will charge {formatPaise(item.basePricePaise)} from now on. The current
+            override stays in the history.
           </p>
         )}
         <TextareaField
@@ -282,7 +337,10 @@ function HistoryDrawer({
       <Loadable state={q}>
         {(d) =>
           d.items.length === 0 ? (
-            <EmptyState title="No overrides" description="This branch has always used the central price." />
+            <EmptyState
+              title="No overrides"
+              description="This branch has always used the central price."
+            />
           ) : (
             <Timeline
               label="Override history, newest first"
@@ -295,7 +353,11 @@ function HistoryDrawer({
                   title: (
                     <span className="dos-cluster">
                       <span className="dos-num">{formatPaise(o.pricePaise)}</span>
-                      {o.effectiveTo === null ? <Badge tone="warning">In effect</Badge> : <Badge>Ended</Badge>}
+                      {o.effectiveTo === null ? (
+                        <Badge tone="warning">In effect</Badge>
+                      ) : (
+                        <Badge>Ended</Badge>
+                      )}
                     </span>
                   ),
                   meta: `${formatDateTime(o.effectiveFrom)} → ${o.effectiveTo ? formatDateTime(o.effectiveTo) : "now"} · set by ${userLabel(o.setBy)}`,

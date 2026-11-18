@@ -1,11 +1,5 @@
 "use client";
 import {
-  type InvitationResponse,
-  type StaffMemberResponse,
-  createInvitationRequest,
-  updateMembershipRequest,
-} from "@dentalos/validation";
-import {
   Alert,
   Badge,
   Button,
@@ -18,6 +12,12 @@ import {
   Tabs,
   TextField,
 } from "@dentalos/ui";
+import {
+  type InvitationResponse,
+  type StaffMemberResponse,
+  createInvitationRequest,
+  updateMembershipRequest,
+} from "@dentalos/validation";
 import { UserPlus } from "lucide-react";
 import { useState } from "react";
 import { AccessFields, type AccessValue } from "../../../components/access-fields";
@@ -105,7 +105,11 @@ function Inner() {
       header: "Branch access",
       accessorFn: (m) => scopeText(m.orgWide, m.branchScope),
     },
-    { accessorKey: "createdAt", header: "Member since", cell: ({ getValue }) => formatDate(getValue() as string) },
+    {
+      accessorKey: "createdAt",
+      header: "Member since",
+      cell: ({ getValue }) => formatDate(getValue() as string),
+    },
     ...(manage
       ? [
           {
@@ -114,7 +118,8 @@ function Inner() {
             enableSorting: false,
             cell: ({ row }: { row: { original: StaffMemberResponse } }) => (
               <Button size="sm" variant="secondary" onClick={() => setEditing(row.original)}>
-                Edit access<span className="dos-sr-only"> for {userLabel(row.original.userId)}</span>
+                Edit access
+                <span className="dos-sr-only"> for {userLabel(row.original.userId)}</span>
               </Button>
             ),
           } satisfies ColumnDef<StaffMemberResponse, unknown>,
@@ -125,17 +130,32 @@ function Inner() {
   const inviteCols: ColumnDef<InvitationResponse, unknown>[] = [
     { accessorKey: "email", header: "Email" },
     { id: "roles", header: "Roles", accessorFn: (i) => i.roles.map(humanize).join(", ") },
-    { id: "scope", header: "Branch access", accessorFn: (i) => scopeText(i.orgWide, i.branchScope) },
+    {
+      id: "scope",
+      header: "Branch access",
+      accessorFn: (i) => scopeText(i.orgWide, i.branchScope),
+    },
     {
       accessorKey: "status",
       header: "Status",
       cell: ({ getValue }) => {
         const s = getValue() as string;
-        const tone = s === "PENDING" ? "info" : s === "ACCEPTED" ? "success" : s === "EXPIRED" ? "warning" : "neutral";
+        const tone =
+          s === "PENDING"
+            ? "info"
+            : s === "ACCEPTED"
+              ? "success"
+              : s === "EXPIRED"
+                ? "warning"
+                : "neutral";
         return <Badge tone={tone}>{humanize(s)}</Badge>;
       },
     },
-    { accessorKey: "expiresAt", header: "Expires", cell: ({ getValue }) => formatDate(getValue() as string) },
+    {
+      accessorKey: "expiresAt",
+      header: "Expires",
+      cell: ({ getValue }) => formatDate(getValue() as string),
+    },
     { id: "by", header: "Invited by", accessorFn: (i) => userLabel(i.invitedBy) },
     {
       id: "actions",
@@ -146,7 +166,12 @@ function Inner() {
         return (
           <div className="dos-cluster">
             {i.status === "PENDING" || i.status === "EXPIRED" ? (
-              <Button size="sm" variant="secondary" loading={resend.pending} onClick={() => void resend.run(i)}>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={resend.pending}
+                onClick={() => void resend.run(i)}
+              >
                 Resend<span className="dos-sr-only"> to {i.email}</span>
               </Button>
             ) : null}
@@ -168,7 +193,11 @@ function Inner() {
       <PageHeader
         title="Staff"
         description="Team members, their roles and which branches they can access"
-        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Administration" }, { label: "Staff" }]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Administration" },
+          { label: "Staff" },
+        ]}
         actions={
           manage ? (
             <Button onClick={() => setInviteOpen(true)}>
@@ -185,7 +214,8 @@ function Inner() {
               Invitation ready for <strong>{created.email}</strong>.{" "}
               {created.acceptPath ? (
                 <>
-                  Share this one-time link (shown once): <span className="dos-mono">{created.acceptPath}</span>
+                  Share this one-time link (shown once):{" "}
+                  <span className="dos-mono">{created.acceptPath}</span>
                 </>
               ) : (
                 "They will receive an email with a sign-up link."
@@ -205,7 +235,11 @@ function Inner() {
           {tab === "members" ? (
             <div className="dos-stack">
               <div className="dos-toolbar">
-                <SelectField label="Role" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+                <SelectField
+                  label="Role"
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                >
                   <option value="">All roles</option>
                   {["OWNER", "MANAGER", "DENTIST", "RECEPTIONIST", "ACCOUNTANT"].map((r) => (
                     <option key={r} value={r}>
@@ -213,7 +247,11 @@ function Inner() {
                     </option>
                   ))}
                 </SelectField>
-                <SelectField label="Branch" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+                <SelectField
+                  label="Branch"
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                >
                   <option value="">All branches</option>
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>

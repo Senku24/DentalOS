@@ -1,6 +1,6 @@
 "use client";
-import { type TenantResponse, updateTenantRequest } from "@dentalos/validation";
 import { Badge, Button, SelectField, TextField, useLink } from "@dentalos/ui";
+import { type TenantResponse, updateTenantRequest } from "@dentalos/validation";
 import { CheckCircle, Circle } from "lucide-react";
 import { Loadable, MockNotice, RequirePermission, Section } from "../../../components/common";
 import { TIME_ZONES } from "../../../components/timezones";
@@ -82,8 +82,19 @@ function SettingsForm({ tenant, onSaved }: { tenant: TenantResponse; onSaved: ()
   };
 
   return (
-    <form ref={f.formRef} className="dos-stack" onSubmit={f.handleSubmit((d) => void save.run(d))} noValidate>
-      <TextField label="Legal name" required disabled={!editable} {...f.field("name")} error={errs.name} />
+    <form
+      ref={f.formRef}
+      className="dos-stack"
+      onSubmit={f.handleSubmit((d) => void save.run(d))}
+      noValidate
+    >
+      <TextField
+        label="Legal name"
+        required
+        disabled={!editable}
+        {...f.field("name")}
+        error={errs.name}
+      />
       <TextField
         label="Display name"
         hint="Shown to patients on messages and the portal"
@@ -142,7 +153,9 @@ function Checklist({ data, onChanged }: { data: OnboardingResponse; onChanged: (
   return (
     <div className="dos-stack">
       <div className="dos-cluster">
-        <Badge tone={data.status === "COMPLETED" ? "success" : "warning"}>{humanize(data.status)}</Badge>
+        <Badge tone={data.status === "COMPLETED" ? "success" : "warning"}>
+          {humanize(data.status)}
+        </Badge>
         <span className="dos-muted">
           {done} of {STEPS.length} steps done
           {data.onboardedAt ? ` · completed ${formatDate(data.onboardedAt)}` : ""}

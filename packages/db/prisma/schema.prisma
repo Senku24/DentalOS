@@ -336,6 +336,9 @@ model BranchPriceOverride {
   setBy         String
   effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
+  /// Why/by whom the override was closed (superseded or cleared).
+  endedReason   String?
+  endedBy       String?
   createdAt     DateTime  @default(now())
   service       Service   @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
   branch        Branch    @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
@@ -466,60 +469,63 @@ model PatientMedicalHistory {
 }
 
 model PatientAllergy {
-  id         String    @id @default(uuid()) @db.Uuid
-  tenantId   String    @db.Uuid
-  patientId  String    @db.Uuid
-  substance  String
-  reaction   String?
-  severity   Severity  @default(MODERATE)
-  active     Boolean   @default(true)
-  notedBy    String
-  notedAt    DateTime  @default(now())
-  resolvedBy String?
-  resolvedAt DateTime?
-  patient    Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  patientId        String    @db.Uuid
+  substance        String
+  reaction         String?
+  severity         Severity  @default(MODERATE)
+  active           Boolean   @default(true)
+  notedBy          String
+  notedAt          DateTime  @default(now())
+  resolvedBy       String?
+  resolvedAt       DateTime?
+  resolutionReason String?
+  patient          Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
 }
 
 model PatientAlert {
-  id         String    @id @default(uuid()) @db.Uuid
-  tenantId   String    @db.Uuid
-  patientId  String    @db.Uuid
-  title      String
-  details    String?
-  severity   Severity
-  active     Boolean   @default(true)
-  createdBy  String
-  createdAt  DateTime  @default(now())
-  resolvedBy String?
-  resolvedAt DateTime?
-  patient    Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  patientId        String    @db.Uuid
+  title            String
+  details          String?
+  severity         Severity
+  active           Boolean   @default(true)
+  createdBy        String
+  createdAt        DateTime  @default(now())
+  resolvedBy       String?
+  resolvedAt       DateTime?
+  resolutionReason String?
+  patient          Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
 }
 
 model PatientConsent {
-  id          String        @id @default(uuid()) @db.Uuid
-  tenantId    String        @db.Uuid
-  patientId   String        @db.Uuid
-  branchId    String?       @db.Uuid
+  id               String        @id @default(uuid()) @db.Uuid
+  tenantId         String        @db.Uuid
+  patientId        String        @db.Uuid
+  branchId         String?       @db.Uuid
   /// Consent type code — see @dentalos/validation `CONSENT_TYPES` (PRD 12.2: catalogue still evolving).
-  type        String
-  version     String
-  status      ConsentStatus
+  type             String
+  version          String
+  status           ConsentStatus
   /// "DIGITAL" | "PAPER" | "VERBAL"
-  method      String?
-  documentId  String?       @db.Uuid
-  capturedBy  String
-  grantedAt   DateTime?
-  withdrawnAt DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @default(now()) @updatedAt
-  patient     Patient       @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  branch      Branch?       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  method           String?
+  documentId       String?       @db.Uuid
+  capturedBy       String
+  grantedAt        DateTime?
+  withdrawnAt      DateTime?
+  withdrawalReason String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @default(now()) @updatedAt
+  patient          Patient       @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch           Branch?       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
@@ -543,25 +549,26 @@ model CommunicationPreference {
 
 /// Object lives in S3 under the tenant prefix (StorageService). Soft-deleted only.
 model PatientDocument {
-  id          String           @id @default(uuid()) @db.Uuid
-  tenantId    String           @db.Uuid
-  patientId   String           @db.Uuid
-  branchId    String           @db.Uuid
-  storageKey  String           @unique
-  fileName    String
-  contentType String
-  sizeBytes   Int
-  sha256      String?
-  category    DocumentCategory @default(OTHER)
-  description String?
-  status      DocumentStatus   @default(PENDING_UPLOAD)
-  uploadedBy  String
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @default(now()) @updatedAt
-  deletedBy   String?
-  deletedAt   DateTime?
-  patient     Patient          @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  branch      Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  id            String           @id @default(uuid()) @db.Uuid
+  tenantId      String           @db.Uuid
+  patientId     String           @db.Uuid
+  branchId      String           @db.Uuid
+  storageKey    String           @unique
+  fileName      String
+  contentType   String
+  sizeBytes     Int
+  sha256        String?
+  category      DocumentCategory @default(OTHER)
+  description   String?
+  status        DocumentStatus   @default(PENDING_UPLOAD)
+  uploadedBy    String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @default(now()) @updatedAt
+  deletedBy     String?
+  deletedAt     DateTime?
+  deletedReason String?
+  patient       Patient          @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch        Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
@@ -590,20 +597,21 @@ model PatientMergeRecord {
 
 /// Canonical pair ordering: patientAId < patientBId (CHECK in SQL), unique per tenant.
 model DuplicateCandidate {
-  id         String          @id @default(uuid()) @db.Uuid
-  tenantId   String          @db.Uuid
-  patientAId String          @db.Uuid
-  patientBId String          @db.Uuid
+  id           String          @id @default(uuid()) @db.Uuid
+  tenantId     String          @db.Uuid
+  patientAId   String          @db.Uuid
+  patientBId   String          @db.Uuid
   /// 0–100.
-  score      Int
-  reasons    Json            @default("[]")
-  status     DuplicateStatus @default(PENDING)
-  reviewedBy String?
-  reviewedAt DateTime?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @default(now()) @updatedAt
-  patientA   Patient         @relation("DuplicateA", fields: [tenantId, patientAId], references: [tenantId, id], onDelete: Restrict)
-  patientB   Patient         @relation("DuplicateB", fields: [tenantId, patientBId], references: [tenantId, id], onDelete: Restrict)
+  score        Int
+  reasons      Json            @default("[]")
+  status       DuplicateStatus @default(PENDING)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewReason String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @default(now()) @updatedAt
+  patientA     Patient         @relation("DuplicateA", fields: [tenantId, patientAId], references: [tenantId, id], onDelete: Restrict)
+  patientB     Patient         @relation("DuplicateB", fields: [tenantId, patientBId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, patientAId, patientBId])
   @@index([tenantId])

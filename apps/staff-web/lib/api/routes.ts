@@ -47,8 +47,7 @@ export const routes = {
   /** POST transferDentistRequest */
   dentistTransfer: () => p("/dentist-assignments/transfer"),
   /** POST endAssignmentRequest */
-  dentistAssignmentEnd: (assignmentId: string) =>
-    p(`/dentist-assignments/${id(assignmentId)}/end`),
+  dentistAssignmentEnd: (assignmentId: string) => p(`/dentist-assignments/${id(assignmentId)}/end`),
 
   // ---- Catalogue & pricing -----------------------------------------------------------------
   /** GET → { items }, POST createServiceCategoryRequest */

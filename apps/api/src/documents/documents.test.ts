@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type Harness, startHarness } from "../org/test-harness";
-import { StorageService } from "../storage/storage.service";
-import { type ObjectHead, objectStore } from "./object-store";
+import { type ObjectHead, StorageService } from "../storage/storage.service";
 
 /**
  * Documents API with a fake object store (no S3 needed): presign calls are stubbed on the app's
- * StorageService instance and the confirm-step HEAD is served from `objects`.
+ * StorageService instance and the confirm-step `StorageService.head` is served from `objects`.
  */
 let h: Harness;
 let tA: string;
@@ -19,7 +18,6 @@ let ownerB: string;
 let patient: string;
 const objects = new Map<string, ObjectHead>();
 const signedDownloads: string[] = [];
-const realHead = objectStore.head;
 
 async function newPatient(tenantId: string, branchId: string) {
   return (
@@ -53,7 +51,10 @@ beforeAll(async () => {
     signedDownloads.push(key);
     return `https://s3.test/bucket/${key}?sig=fake`;
   };
-  objectStore.head = async (key) => objects.get(key) ?? null;
+  storage.head = async (p, key) => {
+    storage.assertOwnKey(p, key);
+    return objects.get(key) ?? null;
+  };
 
   tA = await h.tenant("Doc-A");
   tB = await h.tenant("Doc-B");
@@ -65,10 +66,7 @@ beforeAll(async () => {
   ownerB = await h.member(tB, ["OWNER"], { orgWide: true });
   patient = await newPatient(tA, b1);
 });
-afterAll(async () => {
-  objectStore.head = realHead;
-  await h.close();
-});
+afterAll(() => h.close());
 
 const call = (method: string, path: string, user: string, body?: unknown, tenant = tA) =>
   h.call(method, path, { user, tenant, body });
@@ -140,6 +138,7 @@ test("upload request -> confirm -> list -> download -> soft delete", async () =>
   expect(del.body.status).toBe("DELETED");
   const after = await h.admin.patientDocument.findUniqueOrThrow({ where: { id: row.id } });
   expect(after.deletedBy).toBe(rec);
+  expect(after.deletedReason).toBe("Wrong patient");
   expect((await call("GET", `/documents/${row.id}/download-url`, rec)).status).toBe(409);
   list = await call("GET", `/documents?patientId=${patient}`, rec);
   expect(list.body.items.map((d: { id: string }) => d.id)).not.toContain(row.id);

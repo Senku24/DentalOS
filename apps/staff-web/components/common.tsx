@@ -1,7 +1,7 @@
 "use client";
 import type { Permission } from "@dentalos/contracts";
-import type { BranchResponse } from "@dentalos/validation";
 import { Alert, Button, ErrorState, Skeleton } from "@dentalos/ui";
+import type { BranchResponse } from "@dentalos/validation";
 import { type ReactNode, useEffect, useState } from "react";
 import { MOCK_MODE } from "../lib/api/client";
 import { api } from "../lib/api/endpoints";
@@ -150,7 +150,11 @@ export function Section({
           <h2 className="dos-section-title" style={{ marginBottom: 0 }}>
             {title}
           </h2>
-          {description ? <p className="dos-muted" style={{ margin: "4px 0 0" }}>{description}</p> : null}
+          {description ? (
+            <p className="dos-muted" style={{ margin: "4px 0 0" }}>
+              {description}
+            </p>
+          ) : null}
         </div>
         {actions ? <div className="dos-cluster">{actions}</div> : null}
       </div>

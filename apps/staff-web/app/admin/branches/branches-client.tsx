@@ -1,11 +1,5 @@
 "use client";
 import {
-  type BranchResponse,
-  type WorkingHours,
-  createBranchRequest,
-  updateBranchRequest,
-} from "@dentalos/validation";
-import {
   Badge,
   Button,
   type ColumnDef,
@@ -16,6 +10,12 @@ import {
   SelectField,
   TextField,
 } from "@dentalos/ui";
+import {
+  type BranchResponse,
+  type WorkingHours,
+  createBranchRequest,
+  updateBranchRequest,
+} from "@dentalos/validation";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { MockNotice, RequirePermission, invalidateBranches } from "../../../components/common";
@@ -25,6 +25,7 @@ import { api } from "../../../lib/api/endpoints";
 import { errorStateFor } from "../../../lib/api/errors";
 import { useMutation, useQuery } from "../../../lib/api/hooks";
 import { formatPhone } from "../../../lib/format";
+import { changedFields } from "../../../lib/forms";
 import { canDo } from "../../../lib/session";
 import { useForm } from "../../../lib/use-form";
 
@@ -33,27 +34,33 @@ export function BranchesClient() {
   const list = useQuery(() => api.branches.list(), []);
   const [editing, setEditing] = useState<BranchResponse | "new" | null>(null);
   const [toggle, setToggle] = useState<BranchResponse | null>(null);
-  const setActive = useMutation(
-    (b: BranchResponse) => api.branches.setActive(b.id, !b.active),
-    {
-      success: (b) => `${b.name} ${b.active ? "activated" : "deactivated"}`,
-      onSuccess: () => {
-        setToggle(null);
-        invalidateBranches();
-        list.reload();
-      },
+  const setActive = useMutation((b: BranchResponse) => api.branches.setActive(b.id, !b.active), {
+    success: (b) => `${b.name} ${b.active ? "activated" : "deactivated"}`,
+    onSuccess: () => {
+      setToggle(null);
+      invalidateBranches();
+      list.reload();
     },
-  );
+  });
 
   const columns: ColumnDef<BranchResponse, unknown>[] = [
-    { accessorKey: "code", header: "Code", cell: ({ getValue }) => <span className="dos-mono">{String(getValue())}</span> },
+    {
+      accessorKey: "code",
+      header: "Code",
+      cell: ({ getValue }) => <span className="dos-mono">{String(getValue())}</span>,
+    },
     { accessorKey: "name", header: "Branch" },
     {
       id: "city",
       header: "Location",
       accessorFn: (b) => [b.city, b.state].filter(Boolean).join(", "),
     },
-    { accessorKey: "phone", header: "Phone", enableSorting: false, cell: ({ getValue }) => formatPhone(getValue() as string | null) },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+      enableSorting: false,
+      cell: ({ getValue }) => formatPhone(getValue() as string | null),
+    },
     {
       id: "hours",
       header: "Working hours",
@@ -93,7 +100,11 @@ export function BranchesClient() {
       <PageHeader
         title="Branches"
         description="Clinic locations in your organisation"
-        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Administration" }, { label: "Branches" }]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Administration" },
+          { label: "Branches" },
+        ]}
         actions={
           manage ? (
             <Button onClick={() => setEditing("new")}>
@@ -110,7 +121,18 @@ export function BranchesClient() {
           data={list.data?.items ?? []}
           getRowId={(b) => b.id}
           loading={list.loading && !list.data}
-          error={list.error ? { ...errorStateFor(list.error), action: <Button variant="secondary" onClick={list.reload}>Try again</Button> } : undefined}
+          error={
+            list.error
+              ? {
+                  ...errorStateFor(list.error),
+                  action: (
+                    <Button variant="secondary" onClick={list.reload}>
+                      Try again
+                    </Button>
+                  ),
+                }
+              : undefined
+          }
           emptyTitle="No branches yet"
           emptyDescription="Create your first branch to start registering patients."
           searchLabel="Search branches"
@@ -185,7 +207,16 @@ function BranchDrawer({
   });
   const save = useMutation(
     (body: ReturnType<typeof createBranchRequest.parse>) =>
-      branch ? api.branches.update(branch.id, updateBranchRequest.parse(body)) : api.branches.create(body),
+      branch
+        ? // Only changed keys: PATCH applies exactly what it receives.
+          api.branches.update(
+            branch.id,
+            changedFields(
+              updateBranchRequest.parse(body),
+              branch as unknown as Record<string, unknown>,
+            ),
+          )
+        : api.branches.create(body),
     {
       success: branch ? "Branch updated" : "Branch created",
       onSuccess: onSaved,
@@ -219,7 +250,13 @@ function BranchDrawer({
         onSubmit={f.handleSubmit((d) => void save.run(d))}
       >
         <div className="dos-form-grid">
-          <TextField label="Code" required hint="2–16 letters, digits or -" autoCapitalize="characters" {...f.field("code")} />
+          <TextField
+            label="Code"
+            required
+            hint="2–16 letters, digits or -"
+            autoCapitalize="characters"
+            {...f.field("code")}
+          />
           <TextField label="Name" required {...f.field("name")} />
           <TextField label="Phone" type="tel" inputMode="tel" {...f.field("phone")} />
           <TextField label="Email" type="email" {...f.field("email")} />

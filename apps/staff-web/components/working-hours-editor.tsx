@@ -1,6 +1,6 @@
 "use client";
-import { WEEKDAYS, type WorkingHours } from "@dentalos/validation";
 import { Button, Input } from "@dentalos/ui";
+import { WEEKDAYS, type WorkingHours } from "@dentalos/validation";
 import { Plus, X } from "lucide-react";
 
 const DAY_LABEL: Record<(typeof WEEKDAYS)[number], string> = {
@@ -59,7 +59,9 @@ export function WorkingHoursEditor({
                   onClick={() =>
                     setDay(day, [
                       ...sessions,
-                      sessions.length ? { open: "16:00", close: "20:00" } : { open: "09:30", close: "13:30" },
+                      sessions.length
+                        ? { open: "16:00", close: "20:00" }
+                        : { open: "09:30", close: "13:30" },
                     ])
                   }
                   aria-label={`Add session on ${DAY_LABEL[day]}`}
@@ -108,7 +110,12 @@ export function WorkingHoursEditor({
                     iconOnly
                     disabled={disabled}
                     aria-label={`Remove ${DAY_LABEL[day]} session ${i + 1}`}
-                    onClick={() => setDay(day, sessions.filter((_, j) => j !== i))}
+                    onClick={() =>
+                      setDay(
+                        day,
+                        sessions.filter((_, j) => j !== i),
+                      )
+                    }
                   >
                     <X size={16} aria-hidden="true" />
                   </Button>

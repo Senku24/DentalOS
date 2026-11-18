@@ -49,7 +49,9 @@ export class AuthGuard implements CanActivate {
     // Staff must have MFA (PRD 7.3). Tenant selection is a hint only; membership is verified server-side.
     if (!claims.mfa) throw new ForbiddenException("MFA required");
     req.claims = claims;
-    if (this.reflector.getAllAndOverride<boolean>("authenticated", [ctx.getHandler(), ctx.getClass()])) {
+    if (
+      this.reflector.getAllAndOverride<boolean>("authenticated", [ctx.getHandler(), ctx.getClass()])
+    ) {
       this.checkStepUp(ctx, claims);
       return true;
     }

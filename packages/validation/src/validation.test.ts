@@ -189,16 +189,21 @@ test("promoted patient DTOs: search filters, failOnMatch, merge choices, convert
   expect(duplicateCheckRequest.parse({ firstName: "a" }).failOnMatch).toBeUndefined();
   const m = { survivorId: U1, mergedId: U2, reason: "same person" };
   expect(mergePatientsRequest.parse(m).fieldChoices).toBeUndefined();
-  expect(mergePatientsRequest.parse({ ...m, fieldChoices: { email: "merged" } }).fieldChoices).toEqual(
-    { email: "merged" },
-  );
-  expect(mergePatientsRequest.safeParse({ ...m, fieldChoices: { mrn: "merged" } }).success).toBe(false);
-  expect(convertEnquiryRequest.parse({ existingPatientId: U1 })).toEqual({ existingPatientId: U1 });
   expect(
-    convertEnquiryRequest.parse({ originBranchId: U1, firstName: "Asha" }),
-  ).toMatchObject({ intakeType: "ENQUIRY", sex: "UNKNOWN" });
+    mergePatientsRequest.parse({ ...m, fieldChoices: { email: "merged" } }).fieldChoices,
+  ).toEqual({ email: "merged" });
+  expect(mergePatientsRequest.safeParse({ ...m, fieldChoices: { mrn: "merged" } }).success).toBe(
+    false,
+  );
+  expect(convertEnquiryRequest.parse({ existingPatientId: U1 })).toEqual({ existingPatientId: U1 });
+  expect(convertEnquiryRequest.parse({ originBranchId: U1, firstName: "Asha" })).toMatchObject({
+    intakeType: "ENQUIRY",
+    sex: "UNKNOWN",
+  });
   expect(includeResolvedQuery.parse({})).toEqual({ includeResolved: false });
-  expect(includeResolvedQuery.parse({ includeResolved: "true" })).toEqual({ includeResolved: true });
+  expect(includeResolvedQuery.parse({ includeResolved: "true" })).toEqual({
+    includeResolved: true,
+  });
   const c = {
     id: U1,
     type: "DATA_PROCESSING",

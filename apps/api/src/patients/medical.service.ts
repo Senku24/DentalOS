@@ -177,8 +177,8 @@ export class MedicalService {
     return toAllergy(a);
   }
 
-  /** Deactivates; the row is kept. The free-text reason is not stored (no column) — see Flags. */
-  async resolveAllergy(p: Principal, patientId: string, allergyId: string) {
+  /** Deactivates; the row is kept. The optional reason is stored as `resolutionReason`. */
+  async resolveAllergy(p: Principal, patientId: string, allergyId: string, reason?: string) {
     const a = await withTenant(
       this.prisma,
       p.tenantId,
@@ -189,7 +189,12 @@ export class MedicalService {
         if (!cur.active) throw new ConflictException({ error: "already_resolved" });
         return tx.patientAllergy.update({
           where: { id: allergyId },
-          data: { active: false, resolvedBy: p.userId, resolvedAt: new Date() },
+          data: {
+            active: false,
+            resolvedBy: p.userId,
+            resolvedAt: new Date(),
+            resolutionReason: reason ?? null,
+          },
         });
       },
       { actorId: p.userId },
@@ -244,7 +249,7 @@ export class MedicalService {
     return toAlert(a);
   }
 
-  async resolveAlert(p: Principal, patientId: string, alertId: string) {
+  async resolveAlert(p: Principal, patientId: string, alertId: string, reason?: string) {
     const a = await withTenant(
       this.prisma,
       p.tenantId,
@@ -255,7 +260,12 @@ export class MedicalService {
         if (!cur.active) throw new ConflictException({ error: "already_resolved" });
         return tx.patientAlert.update({
           where: { id: alertId },
-          data: { active: false, resolvedBy: p.userId, resolvedAt: new Date() },
+          data: {
+            active: false,
+            resolvedBy: p.userId,
+            resolvedAt: new Date(),
+            resolutionReason: reason ?? null,
+          },
         });
       },
       { actorId: p.userId },

@@ -1,10 +1,5 @@
 "use client";
 import {
-  type DentistAssignmentResponse,
-  assignDentistRequest,
-  transferDentistRequest,
-} from "@dentalos/validation";
-import {
   Alert,
   Badge,
   Button,
@@ -18,9 +13,20 @@ import {
   TextField,
   Timeline,
 } from "@dentalos/ui";
+import {
+  type DentistAssignmentResponse,
+  assignDentistRequest,
+  transferDentistRequest,
+} from "@dentalos/validation";
 import { ArrowRightLeft, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { BranchOptions, Loadable, MockNotice, RequirePermission, useBranches } from "../../../components/common";
+import {
+  BranchOptions,
+  Loadable,
+  MockNotice,
+  RequirePermission,
+  useBranches,
+} from "../../../components/common";
 import { api } from "../../../lib/api/endpoints";
 import { errorStateFor } from "../../../lib/api/errors";
 import { useMutation, useQuery } from "../../../lib/api/hooks";
@@ -149,7 +155,11 @@ function Inner() {
       <PageHeader
         title="Dentist assignments"
         description="Which branches each dentist works at, with full history"
-        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Administration" }, { label: "Dentist assignments" }]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Administration" },
+          { label: "Dentist assignments" },
+        ]}
         actions={
           manage ? (
             <Button onClick={() => setAssignFor("pick")}>
@@ -161,11 +171,16 @@ function Inner() {
       <div className="dos-stack">
         <MockNotice />
         <Alert tone="info">
-          Assignments and transfers are effective-dated. They change where a dentist can be booked from the
-          effective date onward; past appointments, encounters and earnings keep their original branch.
+          Assignments and transfers are effective-dated. They change where a dentist can be booked
+          from the effective date onward; past appointments, encounters and earnings keep their
+          original branch.
         </Alert>
         <div className="dos-toolbar">
-          <SelectField label="Branch" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+          <SelectField
+            label="Branch"
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+          >
             <option value="">All branches</option>
             <BranchOptions branches={branches} includeInactive />
           </SelectField>
@@ -184,7 +199,11 @@ function Inner() {
       </div>
 
       {historyFor ? (
-        <HistoryDrawer userId={historyFor} branchName={branchName} onClose={() => setHistoryFor(null)} />
+        <HistoryDrawer
+          userId={historyFor}
+          branchName={branchName}
+          onClose={() => setHistoryFor(null)}
+        />
       ) : null}
       {transferFor ? (
         <TransferDialog
@@ -222,12 +241,16 @@ function HistoryDrawer({
 }) {
   const manage = canDo("staff:manage");
   const q = useQuery(() => api.dentists.list({ userId, status: "all" }), [userId]);
-  const end = useMutation(
-    (a: DentistAssignmentResponse) => api.dentists.end(a.id, todayISO()),
-    { success: "Assignment ended", onSuccess: q.reload },
-  );
+  const end = useMutation((a: DentistAssignmentResponse) => api.dentists.end(a.id, todayISO()), {
+    success: "Assignment ended",
+    onSuccess: q.reload,
+  });
   return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} title={`Assignment history — ${userLabel(userId)}`}>
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Assignment history — ${userLabel(userId)}`}
+    >
       <Loadable state={q}>
         {(d) =>
           d.items.length === 0 ? (
@@ -255,7 +278,12 @@ function HistoryDrawer({
                     meta: `${formatDate(a.effectiveFrom)} → ${a.effectiveTo ? formatDate(a.effectiveTo) : "ongoing"} · recorded by ${userLabel(a.createdBy)}`,
                     description:
                       manage && a.effectiveTo === null && cur ? (
-                        <Button size="sm" variant="ghost" loading={end.pending} onClick={() => void end.run(a)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={end.pending}
+                          onClick={() => void end.run(a)}
+                        >
                           End today
                         </Button>
                       ) : undefined,
@@ -314,8 +342,9 @@ function TransferDialog({
     >
       <div className="dos-stack">
         <Alert tone="warning">
-          This affects future appointments only. Appointments, clinical records and earnings before the
-          effective date stay attributed to {v.fromBranchId ? name(v.fromBranchId) : "the current branch"}.
+          This affects future appointments only. Appointments, clinical records and earnings before
+          the effective date stay attributed to{" "}
+          {v.fromBranchId ? name(v.fromBranchId) : "the current branch"}.
         </Alert>
         <SelectField
           label="From branch"

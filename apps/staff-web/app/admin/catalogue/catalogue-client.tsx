@@ -1,12 +1,5 @@
 "use client";
 import {
-  type ServiceCategoryResponse,
-  type ServiceResponse,
-  createServiceCategoryRequest,
-  createServiceRequest,
-  updateServiceRequest,
-} from "@dentalos/validation";
-import {
   Badge,
   Button,
   Checkbox,
@@ -21,6 +14,13 @@ import {
   TextField,
   TextareaField,
 } from "@dentalos/ui";
+import {
+  type ServiceCategoryResponse,
+  type ServiceResponse,
+  createServiceCategoryRequest,
+  createServiceRequest,
+  updateServiceRequest,
+} from "@dentalos/validation";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Loadable, MockNotice, RequirePermission, Section } from "../../../components/common";
@@ -28,7 +28,7 @@ import { api } from "../../../lib/api/endpoints";
 import { errorStateFor } from "../../../lib/api/errors";
 import { useMutation, useQuery } from "../../../lib/api/hooks";
 import { formatPaise } from "../../../lib/format";
-import { paiseToRupeeInput, rupeesToPaise, validate } from "../../../lib/forms";
+import { changedFields, paiseToRupeeInput, rupeesToPaise, validate } from "../../../lib/forms";
 import { canDo } from "../../../lib/session";
 import { useCursorPaging, useDebounced } from "../../../lib/use-cursor";
 
@@ -77,7 +77,11 @@ function Inner() {
     id ? (cats.data?.items.find((c) => c.id === id)?.name ?? "—") : "Uncategorised";
 
   const columns: ColumnDef<ServiceResponse, unknown>[] = [
-    { accessorKey: "code", header: "Code", cell: ({ getValue }) => <span className="dos-mono">{String(getValue())}</span> },
+    {
+      accessorKey: "code",
+      header: "Code",
+      cell: ({ getValue }) => <span className="dos-mono">{String(getValue())}</span>,
+    },
     { accessorKey: "name", header: "Service" },
     { id: "category", header: "Category", accessorFn: (s) => catName(s.categoryId) },
     { accessorKey: "durationMin", header: "Duration", cell: ({ getValue }) => `${getValue()} min` },
@@ -124,7 +128,11 @@ function Inner() {
       <PageHeader
         title="Service catalogue"
         description="Central list of procedures and base prices. Branches may override prices with an audited reason."
-        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Administration" }, { label: "Service catalogue" }]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Administration" },
+          { label: "Service catalogue" },
+        ]}
         actions={
           manage ? (
             <Button onClick={() => setEditing("new")}>
@@ -153,7 +161,11 @@ function Inner() {
                   />
                 </div>
               </div>
-              <SelectField label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <SelectField
+                label="Category"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
                 <option value="">All categories</option>
                 {cats.data?.items.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -161,7 +173,11 @@ function Inner() {
                   </option>
                 ))}
               </SelectField>
-              <SelectField label="Status" value={active} onChange={(e) => setActive(e.target.value)}>
+              <SelectField
+                label="Status"
+                value={active}
+                onChange={(e) => setActive(e.target.value)}
+              >
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
                 <option value="">All</option>
@@ -179,7 +195,9 @@ function Inner() {
                 hidePagination
                 pageSize={100}
                 emptyTitle={dq ? "No services match" : "No services yet"}
-                emptyDescription={dq ? "Try a different name or code." : "Add the procedures your clinics offer."}
+                emptyDescription={
+                  dq ? "Try a different name or code." : "Add the procedures your clinics offer."
+                }
               />
               <CursorPager
                 page={paging.page}
@@ -298,7 +316,12 @@ function Categories({
             void create.run(r.data);
           }}
         >
-          <TextField label="New category" value={name} onChange={(e) => setName(e.target.value)} error={error} />
+          <TextField
+            label="New category"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            error={error}
+          />
           <div>
             <Button type="submit" variant="secondary" size="sm" loading={create.pending}>
               Add category
@@ -344,7 +367,11 @@ function ServiceDrawer({
   const save = useMutation(
     (b: ReturnType<typeof createServiceRequest.parse>) =>
       service
-        ? api.catalog.updateService(service.id, { ...b, categoryId: b.categoryId ?? null })
+        ? api.catalog.updateService(service.id, {
+            ...changedFields(b, service as unknown as Record<string, unknown>),
+            // Clearing the category is an explicit change to null.
+            ...(service.categoryId && !b.categoryId ? { categoryId: null } : {}),
+          })
         : api.catalog.createService(b),
     {
       success: service ? "Service updated" : "Service created",
@@ -354,7 +381,8 @@ function ServiceDrawer({
   );
   const submit = () => {
     const paise = v.price.trim() === "" ? undefined : rupeesToPaise(v.price);
-    if (paise === null) return setErrors({ basePricePaise: "Enter an amount in rupees, e.g. 1500 or 1500.50" });
+    if (paise === null)
+      return setErrors({ basePricePaise: "Enter an amount in rupees, e.g. 1500 or 1500.50" });
     const schema = service ? updateServiceRequest : createServiceRequest;
     const r = validate(schema, {
       code: v.code,
@@ -414,7 +442,13 @@ function ServiceDrawer({
             error={errors.durationMin}
           />
         </div>
-        <TextField label="Name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} error={errors.name} />
+        <TextField
+          label="Name"
+          required
+          value={v.name}
+          onChange={(e) => setV({ ...v, name: e.target.value })}
+          error={errors.name}
+        />
         <SelectField
           label="Category"
           value={v.categoryId}
@@ -432,7 +466,11 @@ function ServiceDrawer({
           label="Base price (₹)"
           inputMode="decimal"
           required
-          hint={v.price && rupeesToPaise(v.price) !== null ? `Will be shown as ${formatPaise(rupeesToPaise(v.price))}` : "Central price used unless a branch overrides it"}
+          hint={
+            v.price && rupeesToPaise(v.price) !== null
+              ? `Will be shown as ${formatPaise(rupeesToPaise(v.price))}`
+              : "Central price used unless a branch overrides it"
+          }
           value={v.price}
           onChange={(e) => setV({ ...v, price: e.target.value })}
           error={errors.basePricePaise}
@@ -452,4 +490,3 @@ function ServiceDrawer({
     </Drawer>
   );
 }
-
