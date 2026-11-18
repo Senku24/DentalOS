@@ -1,3 +1,4 @@
+import { context } from "@opentelemetry/api";
 import { PrismaClient } from "@prisma/client";
 
 export * from "@prisma/client";
@@ -21,10 +22,16 @@ export async function withTenant<T>(
   opts: { actorId?: string } = {},
 ): Promise<T> {
   if (!UUID_RE.test(tenantId)) throw new Error("Invalid tenant context");
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-    if (opts.actorId !== undefined)
-      await tx.$executeRaw`SELECT set_config('app.actor_id', ${opts.actorId}, true)`;
-    return fn(tx);
-  });
+  // Prisma runs interactive-transaction callbacks outside the caller's async context, which would
+  // orphan every DB span (and the tenant/request trace). Re-enter the captured context explicitly.
+  const parent = context.active();
+  return prisma.$transaction(async (tx) =>
+    context.with(parent, async () => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      if (opts.actorId !== undefined)
+        await tx.$executeRaw`SELECT set_config('app.actor_id', ${opts.actorId}, true)`;
+      // `await` inside the context: Prisma promises are lazy and only start on first `then`.
+      return await fn(tx);
+    }),
+  );
 }

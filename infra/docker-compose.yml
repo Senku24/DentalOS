@@ -11,5 +11,12 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 3s
       retries: 20
+  # S3-compatible object storage for dev/CI (SeaweedFS validates SigV4 like S3). DEV CREDENTIALS ONLY.
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: server -s3 -s3.config=/etc/s3.json -dir=/data
+    ports: ["8333:8333"]
+    volumes: ["./s3.dev.json:/etc/s3.json:ro", "s3data:/data"]
 volumes:
   pgdata:
+  s3data:

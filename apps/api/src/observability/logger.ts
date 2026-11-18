@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { currentTraceIds } from "@dentalos/config";
 import type { LoggerService } from "@nestjs/common";
 import pino from "pino";
 
@@ -8,6 +9,8 @@ export const makeLogger = (dest?: pino.DestinationStream) =>
     {
       level: process.env.LOG_LEVEL ?? "info",
       base: { service: process.env.SERVICE_NAME ?? "api" },
+      // Correlate every log line with the active trace.
+      mixin: () => currentTraceIds(),
       redact: {
         paths: ["req.headers.authorization", "req.headers.cookie", "*.token", "*.password"],
         censor: "[redacted]",

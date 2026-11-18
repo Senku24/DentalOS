@@ -19,10 +19,13 @@ See `docs/adr/0001-runtime.md` for the Bun/NestJS go/no-go evidence and gotchas,
   Empty/Error states, Breadcrumbs/PageHeader, **AppShell** (collapsible sidebar, branch switcher, ⌘K palette, notifications, account menu,
   mobile drawer, skip link). Staff app wires it with permission-filtered nav; `/design` shows every state. 32 unit tests incl. axe;
   real-browser axe (with contrast) run on `/design` + overlays at desktop and phone width: 0 violations.
+- **Observability** (`@dentalos/config`): OpenTelemetry tracing (OTLP/HTTP via `OTEL_EXPORTER_OTLP_ENDPOINT`), request spans, Prisma spans,
+  trace context carried into background jobs, trace ids in logs, PII-safe error recording. **Storage**: real S3 round-trip tests in CI
+  (SeaweedFS service in compose; `S3_TEST_ENDPOINT`).
 - `infra/Dockerfile.api` builds and runs healthy; SIGTERM exits 0. CI: biome, migrate, typecheck, test, image build.
 
 ## Not done in M0 yet
-- Real S3/MinIO round trip; OpenTelemetry tracing/error monitoring; soak test (ADR exit criteria).
+- Soak test, plus re-checking object storage and the OTLP path against real AWS in staging (ADR exit criteria).
 - Managed IdP verifier (Cognito) and step-up auth; patient OTP/portal principal (models land with `Patient` in M1).
 - Privileged DB role + tenant provisioning path; AsyncLocalStorage tenant context helper (arrive with first real services, M1).
 - Worker Dockerfile/entrypoint wiring, OpenAPI generation, Terraform/staging, backup job + restore drill.

@@ -1,11 +1,12 @@
 import { PrismaClient } from "@dentalos/db";
 import { Global, Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { AuditService } from "./audit/audit.service";
 import { AuthGuard, PRISMA } from "./auth/auth.guard";
 import { DevTokenVerifier, TOKEN_VERIFIER } from "./auth/token-verifier";
 import { HealthController } from "./health/health.controller";
 import { MeController } from "./me.controller";
+import { TracedExceptionFilter, TracingShutdown } from "./observability/tracing";
 import { EventBus } from "./realtime/event-bus";
 import { EventsController } from "./realtime/events.controller";
 import { StorageService } from "./storage/storage.service";
@@ -28,9 +29,11 @@ import { StorageService } from "./storage/storage.service";
       },
     },
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_FILTER, useClass: TracedExceptionFilter },
     AuditService,
     EventBus,
     StorageService,
+    TracingShutdown,
   ],
   exports: [PRISMA, AuditService, EventBus, StorageService],
 })

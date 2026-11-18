@@ -1,3 +1,10 @@
+import {
+  SpanKind,
+  extractTraceContext,
+  injectTraceContext,
+  runInContext,
+  withSpan,
+} from "@dentalos/config";
 import { type PrismaClient, type Tx, withTenant } from "@dentalos/db";
 import { PgBoss } from "pg-boss";
 
@@ -11,6 +18,8 @@ export interface JobEnvelope<T = unknown> {
   source: string;
   idempotencyKey: string;
   data: T;
+  /** W3C trace context of the enqueuer, so the job continues the originating trace. */
+  trace?: Record<string, string>;
 }
 
 export interface JobQueueOptions {
@@ -45,7 +54,8 @@ export async function enqueue<T>(boss: PgBoss, queue: string, env: JobEnvelope<T
     throw new Error("job requires tenantId and idempotencyKey");
   // singletonKey de-duplicates identical in-flight jobs; handlers must still be idempotent
   // because delivery is at-least-once.
-  return boss.send(queue, env, { singletonKey: `${env.tenantId}:${env.idempotencyKey}` });
+  const traced = { ...env, trace: env.trace ?? injectTraceContext() };
+  return boss.send(queue, traced, { singletonKey: `${env.tenantId}:${env.idempotencyKey}` });
 }
 
 /**
@@ -63,7 +73,21 @@ export async function registerTenantJob<T>(
   await boss.work<JobEnvelope<T>>(queue, { pollingIntervalSeconds: 0.5 }, async (jobs) => {
     for (const job of jobs) {
       const env = job.data;
-      await withTenant(prisma, env.tenantId, (tx) => handler(tx, env), { actorId: env.actorId });
+      await runInContext(extractTraceContext(env.trace), () =>
+        withSpan(
+          `job ${queue}`,
+          {
+            "messaging.system": "pg-boss",
+            "messaging.destination.name": queue,
+            "messaging.message.id": job.id,
+            "dentalos.tenant_id": env.tenantId,
+            "dentalos.job.source": env.source,
+          },
+          () =>
+            withTenant(prisma, env.tenantId, (tx) => handler(tx, env), { actorId: env.actorId }),
+          SpanKind.CONSUMER,
+        ),
+      );
     }
   });
 }

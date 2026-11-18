@@ -14,11 +14,17 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5433/dentalos
+      S3_TEST_ENDPOINT: http://localhost:8333
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: 1.3.13 }
       - run: bun install --frozen-lockfile
+      - name: Start S3-compatible storage (SigV4-validating)
+        run: |
+          docker compose -f infra/docker-compose.yml up -d s3
+          for i in $(seq 1 60); do [ "$(curl -s -o /dev/null -w '%{http_code}' localhost:8333/)" != "000" ] && exit 0; sleep 1; done
+          echo "s3 did not start"; docker compose -f infra/docker-compose.yml logs s3; exit 1
       - run: bunx biome check .
       - run: bunx prisma migrate deploy
         working-directory: packages/db
