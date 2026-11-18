@@ -1,0 +1,26 @@
+/* DentalOS design tokens: warm white, charcoal, emerald. Light theme only for V1. */
+:root {
+  --color-bg: #faf8f5;
+  --color-surface: #ffffff;
+  --color-border: #e7e2da;
+  --color-text: #26272a;
+  --color-text-muted: #6b6e73;
+  --color-primary: #0f8a64;
+  --color-primary-hover: #0b6f50;
+  --color-primary-contrast: #ffffff;
+  --color-danger: #b42318;
+  --color-warning: #b54708;
+  --color-success: #0f8a64;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(38, 39, 42, 0.06);
+  --focus-ring: 0 0 0 3px rgba(15, 138, 100, 0.4);
+}

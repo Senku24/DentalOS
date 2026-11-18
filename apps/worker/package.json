@@ -1,0 +1,12 @@
+{
+  "name": "@dentalos/worker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "@dentalos/db": "workspace:*" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^5.7.2" }
+}
