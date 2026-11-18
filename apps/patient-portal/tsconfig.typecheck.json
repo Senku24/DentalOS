@@ -1,0 +1,7 @@
+{
+  "//": "Standalone typecheck: skips .next/types, which `next build` regenerates concurrently under turbo (TS6053 race).",
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", ".next"]
+}
