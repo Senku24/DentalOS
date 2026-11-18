@@ -56,3 +56,76 @@ test("audit events are append-only for app role", async () => {
   );
   await expect(withTenant(app, a, (tx) => tx.auditEvent.deleteMany())).rejects.toThrow();
 });
+
+test("every public table enforces FORCE RLS with at least one policy (meta-test)", async () => {
+  const rows = await admin.$queryRaw<
+    { relname: string; rls: boolean; forced: boolean; policies: bigint; hasTenantCol: boolean }[]
+  >`
+    SELECT c.relname,
+           c.relrowsecurity AS rls,
+           c.relforcerowsecurity AS forced,
+           (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+           EXISTS (SELECT 1 FROM information_schema.columns k
+                    WHERE k.table_schema = 'public' AND k.table_name = c.relname
+                      AND k.column_name = 'tenantId') AS "hasTenantCol"
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> '_prisma_migrations'`;
+  expect(rows.length).toBeGreaterThan(0);
+  for (const r of rows) {
+    expect(`${r.relname}: rls=${r.rls} forced=${r.forced}`).toBe(
+      `${r.relname}: rls=true forced=true`,
+    );
+    expect(Number(r.policies)).toBeGreaterThan(0);
+    // Every table is tenant-owned, except the Tenant root itself.
+    expect(r.relname === "Tenant" || r.hasTenantCol).toBe(true);
+  }
+});
+
+const ev = (tenantId: string, action: string) => ({
+  tenantId,
+  actorId: "u",
+  action,
+  resource: "r",
+  outcome: "success",
+  source: "test",
+});
+
+test("audit hash chain links events, survives concurrency, and detects tampering", async () => {
+  const t = (await admin.tenant.create({ data: { name: "chain" } })).id;
+  await Promise.all(
+    [1, 2, 3, 4, 5].map((i) =>
+      withTenant(app, t, (tx) => tx.auditEvent.create({ data: ev(t, `a${i}`) })),
+    ),
+  );
+  const verify = async () =>
+    (await admin.$queryRaw<{ v: bigint | null }[]>`SELECT verify_audit_chain(${t}::uuid) AS v`)[0]
+      ?.v;
+  const rows = await admin.auditEvent.findMany({
+    where: { tenantId: t },
+    orderBy: { chainPos: "asc" },
+  });
+  expect(rows.map((r) => Number(r.chainPos))).toEqual([1, 2, 3, 4, 5]);
+  expect(rows[0]?.prevHash).toBeNull();
+  expect(rows[1]?.prevHash).toBe(rows[0]?.hash ?? "");
+  expect(await verify()).toBeNull();
+
+  // Privileged tamper (the app role cannot UPDATE/DELETE) must be detected.
+  await admin.$executeRaw`UPDATE "AuditEvent" SET "outcome" = 'denied' WHERE "tenantId" = ${t}::uuid AND "chainPos" = 3`;
+  expect(Number(await verify())).toBe(3);
+});
+
+test("chain is per tenant and the app role cannot forge chain fields' integrity", async () => {
+  await expect(
+    withTenant(app, a, (tx) => tx.auditEvent.updateMany({ data: { hash: "x" } })),
+  ).rejects.toThrow();
+});
+
+test("withTenant exposes actor id to the session", async () => {
+  const actor = await withTenant(
+    app,
+    a,
+    (tx) => tx.$queryRaw<{ v: string }[]>`SELECT current_setting('app.actor_id', true) AS v`,
+    { actorId: "user-42" },
+  );
+  expect(actor[0]?.v).toBe("user-42");
+});

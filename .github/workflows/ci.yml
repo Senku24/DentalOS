@@ -20,6 +20,8 @@ jobs:
         with: { bun-version: 1.3.13 }
       - run: bun install --frozen-lockfile
       - run: bunx biome check .
-      - run: bunx --cwd packages/db prisma migrate deploy
-      - run: bunx --cwd packages/db prisma generate
+      - run: bunx prisma migrate deploy
+        working-directory: packages/db
+      - run: bunx prisma generate
+        working-directory: packages/db
       - run: bunx turbo run typecheck test

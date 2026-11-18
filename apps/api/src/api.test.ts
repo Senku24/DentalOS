@@ -27,7 +27,12 @@ let tB: string;
 beforeAll(async () => {
   tA = (await admin.tenant.create({ data: { name: "API-A" } })).id;
   tB = (await admin.tenant.create({ data: { name: "API-B" } })).id;
-  await admin.membership.create({ data: { tenantId: tA, userId: "user-a", role: "OWNER" } });
+  await admin.membership.create({
+    data: { tenantId: tA, userId: "user-a", roles: ["OWNER"], orgWide: true },
+  });
+  await admin.membership.create({
+    data: { tenantId: tA, userId: "user-rec", roles: ["RECEPTIONIST"], branchScope: ["b1"] },
+  });
   app = await NestFactory.create(AppModule, { logger: false });
   await app.listen(0);
   base = (await app.getUrl()).replace("[::1]", "localhost");
@@ -53,7 +58,9 @@ test("member with MFA -> principal from DB", async () => {
     "x-tenant-id": tA,
   });
   expect(r.status).toBe(200);
-  expect((await r.json()).role).toBe("OWNER");
+  const body = await r.json();
+  expect(body.roles).toEqual(["OWNER"]);
+  expect(body.orgWide).toBe(true);
 });
 test("no MFA -> 403", async () => {
   expect(
@@ -80,4 +87,17 @@ test("garbage tenant id -> 403, no crash", async () => {
       })
     ).status,
   ).toBe(403);
+});
+
+test("@Can: receptionist is denied an org-level route, owner allowed", async () => {
+  const rec = await get("/me/admin", {
+    authorization: `Bearer ${await token("user-rec")}`,
+    "x-tenant-id": tA,
+  });
+  expect(rec.status).toBe(403);
+  const owner = await get("/me/admin", {
+    authorization: `Bearer ${await token("user-a")}`,
+    "x-tenant-id": tA,
+  });
+  expect(owner.status).toBe(200);
 });

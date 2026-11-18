@@ -9,11 +9,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { type Principal, type Role } from "./roles";
+import { type Permission, type Principal, can } from "./roles";
 import { TOKEN_VERIFIER, type TokenVerifier } from "./token-verifier";
 
 export const Public = () => SetMetadata("public", true);
-export const Roles = (...roles: Role[]) => SetMetadata("roles", roles);
+/** Declares the permission a route requires (capability check; services still enforce branch/resource scope). */
+export const Can = (permission: Permission) => SetMetadata("permission", permission);
 export const PRISMA = Symbol("PRISMA");
 
 @Injectable()
@@ -47,15 +48,16 @@ export class AuthGuard implements CanActivate {
     const principal: Principal = {
       userId: m.userId,
       tenantId: m.tenantId,
-      role: m.role,
+      roles: m.roles,
+      orgWide: m.orgWide,
       branchScope: m.branchScope,
     };
     req.principal = principal;
-    const roles = this.reflector.getAllAndOverride<Role[] | undefined>("roles", [
+    const permission = this.reflector.getAllAndOverride<Permission | undefined>("permission", [
       ctx.getHandler(),
       ctx.getClass(),
     ]);
-    if (roles && !roles.includes(principal.role)) throw new ForbiddenException();
+    if (permission && !can(principal, permission)) throw new ForbiddenException();
     return true;
   }
 }
