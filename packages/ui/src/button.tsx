@@ -1,41 +1,38 @@
-import type { ButtonHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, forwardRef } from "react";
+import { cx } from "./cx";
 
-type Variant = "primary" | "secondary" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
-const styles: Record<Variant, React.CSSProperties> = {
-  primary: {
-    background: "var(--color-primary)",
-    color: "var(--color-primary-contrast)",
-    border: "1px solid var(--color-primary)",
-  },
-  secondary: {
-    background: "var(--color-surface)",
-    color: "var(--color-text)",
-    border: "1px solid var(--color-border)",
-  },
-  danger: {
-    background: "var(--color-danger)",
-    color: "#fff",
-    border: "1px solid var(--color-danger)",
-  },
-};
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: "md" | "sm";
+  /** Shows a spinner and blocks activation; keeps focus and width. */
+  loading?: boolean;
+  /** Square icon button. An accessible name (aria-label) is then required. */
+  iconOnly?: boolean;
+}
 
-export function Button({
-  variant = "primary",
-  style,
-  ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = "primary", size = "md", loading, iconOnly, className, children, disabled, ...rest },
+  ref,
+) {
   return (
     <button
+      ref={ref}
+      type="button"
       {...rest}
-      style={{
-        padding: "var(--space-2) var(--space-4)",
-        borderRadius: "var(--radius-md)",
-        font: "inherit",
-        cursor: "pointer",
-        ...styles[variant],
-        ...style,
-      }}
-    />
+      className={cx("dos-btn", className)}
+      data-variant={variant}
+      data-size={size}
+      data-icon-only={iconOnly ? "true" : undefined}
+      disabled={disabled}
+      // aria-disabled (not disabled) while loading so keyboard focus is not lost mid-action
+      aria-disabled={loading ? true : undefined}
+      aria-busy={loading ? true : undefined}
+      onClick={loading ? (e) => e.preventDefault() : rest.onClick}
+    >
+      {loading ? <span className="dos-spinner" aria-hidden="true" /> : null}
+      {children}
+    </button>
   );
-}
+});

@@ -1,20 +1,18 @@
 import "@dentalos/ui/tokens.css";
+import "@dentalos/ui/ui.css";
 import type { ReactNode } from "react";
+import { Providers } from "../components/providers";
+import { ShellFrame } from "../components/shell-frame";
 
-export const metadata = { title: "DentalOS Staff" };
+export const metadata = { title: { default: "DentalOS", template: "%s · DentalOS" } };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          background: "var(--color-bg)",
-          color: "var(--color-text)",
-          fontFamily: "var(--font-sans)",
-        }}
-      >
-        {children}
+      <body>
+        <Providers>
+          <ShellFrame>{children}</ShellFrame>
+        </Providers>
       </body>
     </html>
   );

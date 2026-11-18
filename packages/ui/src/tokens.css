@@ -1,26 +1,92 @@
-/* DentalOS design tokens: warm white, charcoal, emerald. Light theme only for V1. */
+/*
+ * DentalOS design tokens — warm white, charcoal, emerald. Light theme only for V1 (PRD 3.1).
+ * Every text/background pair below is asserted >= WCAG 2.2 AA by src/tokens.test.ts.
+ * Components consume ONLY these variables; no one-off colours/sizes in component CSS.
+ */
 :root {
+  /* Surfaces */
   --color-bg: #faf8f5;
   --color-surface: #ffffff;
-  --color-border: #e7e2da;
+  --color-surface-muted: #f4f1ec;
+  --color-overlay: rgba(38, 39, 42, 0.45);
+
+  /* Text */
   --color-text: #26272a;
-  --color-text-muted: #6b6e73;
-  --color-primary: #0f8a64;
-  --color-primary-hover: #0b6f50;
+  --color-text-muted: #5f6368;
+
+  /* Borders: decorative hairline vs. control boundary (needs 3:1 for inputs, WCAG 1.4.11) */
+  --color-border: #e7e2da;
+  --color-border-strong: #868a8f;
+
+  /* Brand */
+  --color-primary: #0b7553;
+  --color-primary-hover: #085a41;
   --color-primary-contrast: #ffffff;
+  --color-primary-subtle: #e6f4ee;
+  --color-primary-subtle-text: #0a704f;
+
+  /* Status (each has a solid and a subtle-background variant with accessible text) */
   --color-danger: #b42318;
+  --color-danger-subtle: #fdecea;
   --color-warning: #b54708;
-  --color-success: #0f8a64;
+  --color-warning-subtle: #fef3e6;
+  --color-success: #0a704f;
+  --color-success-subtle: #e6f4ee;
+  --color-info: #1d5fa8;
+  --color-info-subtle: #e8f0fa;
+
+  /* Typography */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Spacing, radii, elevation */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --radius-full: 999px;
   --shadow-sm: 0 1px 2px rgba(38, 39, 42, 0.06);
-  --focus-ring: 0 0 0 3px rgba(15, 138, 100, 0.4);
+  --shadow-md: 0 4px 12px rgba(38, 39, 42, 0.1);
+  --shadow-lg: 0 12px 32px rgba(38, 39, 42, 0.16);
+
+  /* Focus: 2px ring + offset, visible on both light surfaces (WCAG 2.4.11/2.4.13) */
+  --focus-ring: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-primary);
+
+  /* Layout & motion */
+  --control-height: 40px;
+  --control-height-sm: 32px;
+  --target-min: 24px; /* WCAG 2.2 target size minimum */
+  --sidebar-width: 248px;
+  --sidebar-width-collapsed: 64px;
+  --topbar-height: 56px;
+  --drawer-width: 440px;
+  --duration-fast: 120ms;
+  --z-sidebar: 20;
+  --z-topbar: 30;
+  --z-overlay: 50;
+  --z-toast: 60;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+  }
 }

@@ -24,5 +24,5 @@ jobs:
         working-directory: packages/db
       - run: bunx prisma generate
         working-directory: packages/db
-      - run: bunx turbo run typecheck test
+      - run: bunx turbo run typecheck test build
       - run: docker build -f infra/Dockerfile.api -t dentalos-api:ci .

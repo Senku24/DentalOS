@@ -14,6 +14,11 @@ See `docs/adr/0001-runtime.md` for the Bun/NestJS go/no-go evidence and gotchas,
 - API (NestJS on Bun): token-verifier abstraction, MFA required, server-resolved membership, `@Can('perm')`, health, SSE
   (`/events`, tenant+branch filtered), pino logging with redaction + request ids, S3 presign service (tenant-prefixed keys).
 - Worker: pg-boss job helpers (tenant envelope, retries, idempotent enqueue) with tests.
+- **Design system** (`@dentalos/ui`): AA-checked tokens (contrast asserted in tests), Button, Badge, Text/Select/Textarea fields,
+  Card/StatCard, DataTable (sort, search, paging, loading/empty/error), Dialog/Drawer/ConfirmDialog, Toast, Alert, Skeleton/Spinner,
+  Empty/Error states, Breadcrumbs/PageHeader, **AppShell** (collapsible sidebar, branch switcher, ⌘K palette, notifications, account menu,
+  mobile drawer, skip link). Staff app wires it with permission-filtered nav; `/design` shows every state. 32 unit tests incl. axe;
+  real-browser axe (with contrast) run on `/design` + overlays at desktop and phone width: 0 violations.
 - `infra/Dockerfile.api` builds and runs healthy; SIGTERM exits 0. CI: biome, migrate, typecheck, test, image build.
 
 ## Not done in M0 yet
@@ -21,7 +26,8 @@ See `docs/adr/0001-runtime.md` for the Bun/NestJS go/no-go evidence and gotchas,
 - Managed IdP verifier (Cognito) and step-up auth; patient OTP/portal principal (models land with `Patient` in M1).
 - Privileged DB role + tenant provisioning path; AsyncLocalStorage tenant context helper (arrive with first real services, M1).
 - Worker Dockerfile/entrypoint wiring, OpenAPI generation, Terraform/staging, backup job + restore drill.
-- Design-system components beyond Button/Badge, and the app shell.
+- Real-browser accessibility check in CI (Playwright + axe on `/design`); saved table views; server-driven table paging (M1).
+- Patient-portal visual identity (it currently only shares tokens/base styles).
 
 ## Local dev
 ```

@@ -11,7 +11,9 @@
     "@dentalos/ui": "workspace:*",
     "next": "^15.1.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@dentalos/contracts": "workspace:*",
+    "lucide-react": "^1.75.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
