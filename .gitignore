@@ -11,3 +11,8 @@ coverage
 .DS_Store
 *.tsbuildinfo
 .claude/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+infra/terraform/envs/*.backend.hcl
+*.tfplan

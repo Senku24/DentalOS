@@ -1,0 +1,17 @@
+# Build from repo root:  docker build -f infra/Dockerfile.worker -t dentalos-worker .
+FROM oven/bun:1.3.13 AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN bun install --frozen-lockfile
+RUN cd packages/db && bunx prisma generate
+
+FROM oven/bun:1.3.13 AS run
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+COPY --from=build --chown=bun:bun /app /app
+USER bun
+# Bun resolves tsconfig from the CWD: start from the app dir (see docs/adr/0001-runtime.md).
+WORKDIR /app/apps/worker
+CMD ["bun", "src/main.ts"]

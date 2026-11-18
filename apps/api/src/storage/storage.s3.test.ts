@@ -3,6 +3,7 @@ import {
   CreateBucketCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 
@@ -41,8 +42,21 @@ beforeAll(async () => {
     forcePathStyle: true,
     credentials: { accessKeyId: "dev", secretAccessKey: "devdevdev" },
   });
-  await admin.send(new CreateBucketCommand({ Bucket: bucket }));
-});
+  // A freshly started SeaweedFS accepts connections before it can serve (and allocates its first
+  // volume lazily): retry bucket creation and a warm-up write so tests measure behaviour, not start-up.
+  const retry = async (fn: () => Promise<unknown>) => {
+    for (let i = 0; ; i++) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (i >= 40) throw e;
+        await Bun.sleep(1500);
+      }
+    }
+  };
+  await retry(() => admin.send(new CreateBucketCommand({ Bucket: bucket })));
+  await retry(() => admin.send(new PutObjectCommand({ Bucket: bucket, Key: "warmup", Body: "x" })));
+}, 120_000);
 afterAll(() => admin?.destroy());
 
 async function upload(

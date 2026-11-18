@@ -13,6 +13,9 @@ import { type Permission, type Principal, can } from "./roles";
 import { TOKEN_VERIFIER, type TokenVerifier } from "./token-verifier";
 
 export const Public = () => SetMetadata("public", true);
+/** Requires an interactive sign-in no older than `maxAgeSeconds` (step-up for risky actions, PRD 7.3). */
+export const StepUp = (maxAgeSeconds: number) => SetMetadata("stepUp", maxAgeSeconds);
+
 /** Declares the permission a route requires (capability check; services still enforce branch/resource scope). */
 export const Can = (permission: Permission) => SetMetadata("permission", permission);
 export const PRISMA = Symbol("PRISMA");
@@ -58,6 +61,14 @@ export class AuthGuard implements CanActivate {
       ctx.getClass(),
     ]);
     if (permission && !can(principal, permission)) throw new ForbiddenException();
+    const stepUp = this.reflector.getAllAndOverride<number | undefined>("stepUp", [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (stepUp !== undefined && Math.floor(Date.now() / 1000) - claims.authTime > stepUp) {
+      // 401 + machine-readable code: the client must re-authenticate (Cognito cannot step up in-session).
+      throw new UnauthorizedException({ error: "reauth_required", maxAgeSeconds: stepUp });
+    }
     return true;
   }
 }

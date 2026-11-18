@@ -1,0 +1,91 @@
+name: Deploy
+# Manual on purpose until staging exists and has been verified. Each environment is a GitHub
+# Environment (add required reviewers on `production`), whose name must equal the Terraform `env`.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  id-token: write # GitHub OIDC -> AWS (no long-lived keys)
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm # task definitions are ARM64 (Graviton); build natively
+    environment: ${{ inputs.environment }}
+    env:
+      AWS_REGION: ap-south-1
+      NAME: dentalos-${{ inputs.environment }}
+      CLUSTER: ${{ vars.ECS_CLUSTER }}
+      SUBNETS: ${{ vars.APP_SUBNETS }} # comma-separated, from `terraform output app_subnet_ids`
+      SECURITY_GROUP: ${{ vars.APP_SG }}
+      API_URL: ${{ vars.API_URL }}
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: "Build and push images (immutable tag = commit sha)"
+        run: |
+          for svc in api worker; do
+            image="${{ steps.ecr.outputs.registry }}/${NAME}/${svc}:${TAG}"
+            docker build -f "infra/Dockerfile.${svc}" -t "$image" .
+            docker push "$image"
+          done
+
+      - name: Register new task-definition revisions
+        run: |
+          registry="${{ steps.ecr.outputs.registry }}"
+          for fam in api worker migrate; do
+            repo=$([ "$fam" = migrate ] && echo api || echo "$fam")
+            aws ecs describe-task-definition --task-definition "${NAME}-${fam}" --query taskDefinition > td.json
+            jq --arg img "${registry}/${NAME}/${repo}:${TAG}" '
+              .containerDefinitions |= map(if .name == "otel" then . else .image = $img end)
+              | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' td.json > new.json
+            arn=$(aws ecs register-task-definition --cli-input-json file://new.json --query taskDefinition.taskDefinitionArn --output text)
+            echo "${fam^^}_TD=${arn}" >> "$GITHUB_ENV"
+          done
+
+      - name: "Run migrations (expand/contract only; old code must keep working against the new schema)"
+        run: |
+          task=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$MIGRATE_TD" \
+            --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SECURITY_GROUP}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task"
+          code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$code" != "0" ]; then
+            echo "migration failed (exit $code); deploy aborted"
+            aws logs tail "/dentalos/${NAME}/migrate" --since 15m || true
+            exit 1
+          fi
+
+      - name: "Roll out (circuit breaker rolls back a failing revision automatically)"
+        run: |
+          aws ecs update-service --cluster "$CLUSTER" --service api --task-definition "$API_TD" >/dev/null
+          aws ecs update-service --cluster "$CLUSTER" --service worker --task-definition "$WORKER_TD" >/dev/null
+          aws ecs wait services-stable --cluster "$CLUSTER" --services api worker
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${API_URL}/health/ready" || true)
+            [ "$code" = "200" ] && echo "ready" && exit 0
+            sleep 6
+          done
+          echo "smoke test failed"; exit 1

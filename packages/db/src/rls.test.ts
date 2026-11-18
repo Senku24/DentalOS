@@ -129,3 +129,23 @@ test("withTenant exposes actor id to the session", async () => {
   );
   expect(actor[0]?.v).toBe("user-42");
 });
+
+test("setRolePassword rotates a role's password safely (quotes in the secret are inert)", async () => {
+  const { setRolePassword } = await import("./role-password");
+  await admin.$executeRawUnsafe("DROP ROLE IF EXISTS dentalos_pw_probe");
+  await admin.$executeRawUnsafe("CREATE ROLE dentalos_pw_probe LOGIN PASSWORD 'old'");
+  const secret = `p'a"ss;--\\${"x".repeat(24)}`;
+  await setRolePassword(ADMIN_URL, "dentalos_pw_probe", secret);
+  const probe = new PrismaClient({
+    datasources: {
+      db: {
+        url: ADMIN_URL.replace(/\/\/[^@]+@/, `//dentalos_pw_probe:${encodeURIComponent(secret)}@`),
+      },
+    },
+  });
+  expect((await probe.$queryRaw<{ ok: number }[]>`SELECT 1 AS ok`)[0]?.ok).toBe(1);
+  await probe.$disconnect();
+  await expect(setRolePassword(ADMIN_URL, "x; DROP ROLE y", "z".repeat(30))).rejects.toThrow();
+  await expect(setRolePassword(ADMIN_URL, "dentalos_pw_probe", "short")).rejects.toThrow();
+  await admin.$executeRawUnsafe("DROP ROLE dentalos_pw_probe");
+});

@@ -12,9 +12,10 @@ const admin = new PrismaClient({
   datasources: { db: { url: "postgresql://postgres:postgres@localhost:5433/dentalos" } },
 });
 const key = new TextEncoder().encode(process.env.DEV_JWT_SECRET);
-const token = (sub: string, mfa = true) =>
-  new SignJWT({ mfa })
+const token = (sub: string, mfa = true, extra: Record<string, unknown> = {}) =>
+  new SignJWT({ mfa, ...extra })
     .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
     .setSubject(sub)
     .setExpirationTime("5m")
     .sign(key);
@@ -154,4 +155,15 @@ test("SSE respects branch scope for non-org-wide principals", async () => {
 
 test("SSE without auth -> 401", async () => {
   expect((await get("/events", { "x-tenant-id": tA })).status).toBe(401);
+});
+
+test("@StepUp: a stale sign-in is told to re-authenticate, a fresh one passes", async () => {
+  const stale = await token("user-a", true, { auth_time: Math.floor(Date.now() / 1000) - 3600 });
+  const r = await get("/me/admin", { authorization: `Bearer ${stale}`, "x-tenant-id": tA });
+  expect(r.status).toBe(401);
+  expect(await r.json()).toMatchObject({ error: "reauth_required", maxAgeSeconds: 900 });
+  const fresh = await token("user-a", true, { auth_time: Math.floor(Date.now() / 1000) - 60 });
+  expect(
+    (await get("/me/admin", { authorization: `Bearer ${fresh}`, "x-tenant-id": tA })).status,
+  ).toBe(200);
 });

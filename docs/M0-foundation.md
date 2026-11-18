@@ -22,13 +22,14 @@ See `docs/adr/0001-runtime.md` for the Bun/NestJS go/no-go evidence and gotchas,
 - **Observability** (`@dentalos/config`): OpenTelemetry tracing (OTLP/HTTP via `OTEL_EXPORTER_OTLP_ENDPOINT`), request spans, Prisma spans,
   trace context carried into background jobs, trace ids in logs, PII-safe error recording. **Storage**: real S3 round-trip tests in CI
   (SeaweedFS service in compose; `S3_TEST_ENDPOINT`).
+- **Identity**: `CognitoTokenVerifier` (JWKS, RS256-pinned, fails closed), env-driven `createTokenVerifier` (dev secret refused in production), `@StepUp` re-auth guard. **Infrastructure as code** (`infra/terraform`): KMS, VPC, RDS, S3 (+object-locked audit bucket), Cognito pools, ECS/ALB/WAF, OIDC deploy role, alarms; validated + Trivy-clean, **not applied**. `deploy.yml` (manual) and DB role-password rotation proven in a container. See ADR 0002.
 - `infra/Dockerfile.api` builds and runs healthy; SIGTERM exits 0. CI: biome, migrate, typecheck, test, image build.
 
 ## Not done in M0 yet
 - Soak test, plus re-checking object storage and the OTLP path against real AWS in staging (ADR exit criteria).
-- Managed IdP verifier (Cognito) and step-up auth; patient OTP/portal principal (models land with `Patient` in M1).
+- Staff-web sign-in (OAuth code-flow BFF + session) against Cognito; patient OTP/portal principal (models land with `Patient` in M1).
 - Privileged DB role + tenant provisioning path; AsyncLocalStorage tenant context helper (arrive with first real services, M1).
-- Worker Dockerfile/entrypoint wiring, OpenAPI generation, Terraform/staging, backup job + restore drill.
+- Applying Terraform to a real AWS account (staging) and the first restore drill; OpenAPI generation; web-app images/services.
 - Real-browser accessibility check in CI (Playwright + axe on `/design`); saved table views; server-driven table paging (M1).
 - Patient-portal visual identity (it currently only shares tokens/base styles).
 
