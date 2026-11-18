@@ -9,12 +9,14 @@ const admin = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 const app = new PrismaClient({ datasources: { db: { url: APP_URL } } });
 let a: string;
 let b: string;
+let branchA: string;
+let branchB: string;
 
 beforeAll(async () => {
   a = (await admin.tenant.create({ data: { name: "A" } })).id;
   b = (await admin.tenant.create({ data: { name: "B" } })).id;
-  await admin.branch.create({ data: { tenantId: a, name: "A1" } });
-  await admin.branch.create({ data: { tenantId: b, name: "B1" } });
+  branchA = (await admin.branch.create({ data: { tenantId: a, code: "A1", name: "A1" } })).id;
+  branchB = (await admin.branch.create({ data: { tenantId: b, code: "B1", name: "B1" } })).id;
 });
 afterAll(async () => {
   await admin.$disconnect();
@@ -37,7 +39,9 @@ test("invalid tenant id is rejected before any query", async () => {
 
 test("cannot insert a row for another tenant", async () => {
   await expect(
-    withTenant(app, a, (tx) => tx.branch.create({ data: { tenantId: b, name: "evil" } })),
+    withTenant(app, a, (tx) =>
+      tx.branch.create({ data: { tenantId: b, code: "EVIL", name: "evil" } }),
+    ),
   ).rejects.toThrow();
 });
 
@@ -148,4 +152,94 @@ test("setRolePassword rotates a role's password safely (quotes in the secret are
   await expect(setRolePassword(ADMIN_URL, "x; DROP ROLE y", "z".repeat(30))).rejects.toThrow();
   await expect(setRolePassword(ADMIN_URL, "dentalos_pw_probe", "short")).rejects.toThrow();
   await admin.$executeRawUnsafe("DROP ROLE dentalos_pw_probe");
+});
+
+// --- M1 tables ---------------------------------------------------------------------------------
+const patient = (tenantId: string, originBranchId: string, first = "Asha") => ({
+  tenantId,
+  originBranchId,
+  firstName: first,
+  nameNormalized: first.toLowerCase(),
+  intakeType: "WALK_IN" as const,
+  createdBy: "u",
+});
+
+test("patients are tenant-isolated and cannot reference another tenant's branch", async () => {
+  const p = await withTenant(app, a, (tx) => tx.patient.create({ data: patient(a, branchA) }));
+  expect(
+    await withTenant(app, b, (tx) => tx.patient.findUnique({ where: { id: p.id } })),
+  ).toBeNull();
+  // Composite FK (tenantId, originBranchId) -> Branch(tenantId, id): a guessed foreign UUID is rejected.
+  await expect(
+    withTenant(app, a, (tx) => tx.patient.create({ data: patient(a, branchB) })),
+  ).rejects.toThrow();
+});
+
+test("child rows cannot point at another tenant's patient (composite FK)", async () => {
+  const pb = await withTenant(app, b, (tx) => tx.patient.create({ data: patient(b, branchB) }));
+  await expect(
+    withTenant(app, a, (tx) =>
+      tx.patientAlert.create({
+        data: { tenantId: a, patientId: pb.id, title: "x", severity: "HIGH", createdBy: "u" },
+      }),
+    ),
+  ).rejects.toThrow();
+});
+
+test("medical history is append-only and patients cannot be hard-deleted by the app role", async () => {
+  const p = await withTenant(app, a, (tx) => tx.patient.create({ data: patient(a, branchA) }));
+  const h = await withTenant(app, a, (tx) =>
+    tx.patientMedicalHistory.create({
+      data: { tenantId: a, patientId: p.id, version: 1, recordedBy: "u" },
+    }),
+  );
+  await expect(
+    withTenant(app, a, (tx) =>
+      tx.patientMedicalHistory.update({ where: { id: h.id }, data: { notes: "rewrite" } }),
+    ),
+  ).rejects.toThrow();
+  await expect(
+    withTenant(app, a, (tx) => tx.patient.delete({ where: { id: p.id } })),
+  ).rejects.toThrow();
+});
+
+test("only one open price override per service+branch; history rows allowed", async () => {
+  const s = await withTenant(app, a, (tx) =>
+    tx.service.create({
+      data: {
+        tenantId: a,
+        code: `S-${Date.now()}`,
+        name: "Scaling",
+        durationMin: 30,
+        basePricePaise: 150000,
+      },
+    }),
+  );
+  const ov = (closed: boolean) => ({
+    tenantId: a,
+    serviceId: s.id,
+    branchId: branchA,
+    pricePaise: 120000,
+    reason: "local market",
+    setBy: "u",
+    effectiveFrom: new Date(Date.now() - 86_400_000),
+    effectiveTo: closed ? new Date() : null,
+  });
+  await withTenant(app, a, (tx) => tx.branchPriceOverride.create({ data: ov(true) }));
+  await withTenant(app, a, (tx) => tx.branchPriceOverride.create({ data: ov(false) }));
+  await expect(
+    withTenant(app, a, (tx) => tx.branchPriceOverride.create({ data: ov(false) })),
+  ).rejects.toThrow();
+});
+
+test("pg_trgm similarity search works on normalised patient names", async () => {
+  await withTenant(app, a, (tx) => tx.patient.create({ data: patient(a, branchA, "Priyanka") }));
+  const rows = await withTenant(
+    app,
+    a,
+    (tx) => tx.$queryRaw<{ n: string }[]>`
+      SELECT "nameNormalized" AS n FROM "Patient"
+       WHERE "nameNormalized" % ${"priyanka"} ORDER BY similarity("nameNormalized", ${"priyanka"}) DESC`,
+  );
+  expect(rows[0]?.n).toBe("priyanka");
 });

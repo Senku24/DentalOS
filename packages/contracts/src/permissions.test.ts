@@ -56,6 +56,15 @@ const table: [Principal["roles"][number], (typeof ALL_PERMISSIONS)[number], bool
   ["MANAGER", "compensation:manage", false],
   ["OWNER", "clinical:sign", false],
   ["OWNER", "staff:manage", true],
+  // M1: health data is narrower than the shared patient profile.
+  ["ACCOUNTANT", "patient:read", true],
+  ["ACCOUNTANT", "medical:read", false],
+  ["RECEPTIONIST", "medical:write", true],
+  ["DENTIST", "medical:write", true],
+  ["MANAGER", "medical:write", false],
+  ["OWNER", "medical:read", true],
+  ["OWNER", "medical:write", false],
+  ["RECEPTIONIST", "patient:merge", false],
 ];
 for (const [role, perm, want] of table)
   test(`${role} ${want ? "can" : "cannot"} ${perm}`, () => {

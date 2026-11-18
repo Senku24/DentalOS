@@ -26,8 +26,12 @@ export const PERMISSIONS = {
   // Patients
   "patient:read": "tenant",
   "patient:write": "tenant",
+  /** Also covers duplicate-candidate review/dismissal. */
   "patient:merge": "tenant",
   "patient:export": "org",
+  /** Medical/dental history, allergies, clinical alerts: health data, narrower than patient:read. */
+  "medical:read": "tenant",
+  "medical:write": "tenant",
   "document:read": "branch",
   "document:write": "branch",
   "consent:manage": "branch",
@@ -83,6 +87,7 @@ const without = (...p: Permission[]) => ALL.filter((x) => !p.includes(x));
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   OWNER: without(
+    "medical:write",
     "clinical:write",
     "clinical:sign",
     "clinical:amend",
@@ -99,6 +104,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "patient:read",
     "patient:write",
     "patient:merge",
+    "medical:read",
     "document:read",
     "document:write",
     "consent:manage",
@@ -126,6 +132,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "catalog:read",
     "patient:read",
     "patient:write",
+    "medical:read",
+    "medical:write",
     "document:read",
     "document:write",
     "consent:manage",
@@ -148,6 +156,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "catalog:read",
     "patient:read",
     "patient:write",
+    "medical:read",
+    "medical:write",
     "document:read",
     "document:write",
     "consent:manage",

@@ -33,6 +33,8 @@ export interface DataTableProps<T> {
   searchable?: boolean;
   searchLabel?: string;
   toolbarActions?: ReactNode;
+  /** Hide the built-in client pager (server-driven lists render their own `CursorPager`). */
+  hidePagination?: boolean;
 }
 
 export function DataTable<T>({
@@ -49,6 +51,7 @@ export function DataTable<T>({
   searchable = true,
   searchLabel = "Search table",
   toolbarActions,
+  hidePagination,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filter, setFilter] = useState("");
@@ -181,7 +184,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      {!error ? (
+      {!error && !hidePagination ? (
         <div className="dos-pagination">
           <output id={statusId}>
             {loading ? "Loading…" : `Showing ${from}–${to} of ${total}`}

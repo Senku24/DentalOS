@@ -12,3 +12,13 @@ export { AppShell, type AppShellProps } from "./shell/app-shell";
 export { ALL_BRANCHES } from "./shell/branch-switcher";
 export type { NavItem, BranchOption, ShellUser, CommandItem } from "./shell/types";
 export { cx } from "./cx";
+export { Tabs, type TabItem } from "./tabs";
+export { Checkbox, CheckboxGroup, RadioGroup, type ChoiceOption } from "./choice";
+export {
+  DescriptionList,
+  Timeline,
+  type TimelineItem,
+  Steps,
+  CursorPager,
+  Toolbar,
+} from "./display";

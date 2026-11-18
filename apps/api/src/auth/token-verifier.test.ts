@@ -54,6 +54,19 @@ test("accepts a valid access token and maps claims", async () => {
   expect(c).toEqual({ sub: "sub-123", mfa: true, authTime: 1_800_000_000 });
 });
 
+test("maps email only when Cognito marks it verified", async () => {
+  expect((await verifier.verify(await mint({ email: "A@X.in", email_verified: true }))).email).toBe(
+    "a@x.in",
+  );
+  expect(
+    (await verifier.verify(await mint({ email: "a@x.in", email_verified: "true" }))).email,
+  ).toBe("a@x.in");
+  expect(
+    (await verifier.verify(await mint({ email: "a@x.in", email_verified: false }))).email,
+  ).toBeUndefined();
+  expect((await verifier.verify(await mint({ email: "a@x.in" }))).email).toBeUndefined();
+});
+
 test("rejects: wrong issuer, wrong client, id token, expired, foreign signature, unknown kid", async () => {
   const bad = [
     await mint({}, { iss: "https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_OTHER" }),
@@ -130,4 +143,18 @@ test("createTokenVerifier: Cognito when configured; dev secret refused in produc
   ).toThrow();
   expect(createTokenVerifier({ DEV_JWT_SECRET: "x".repeat(32) })).toBeInstanceOf(DevTokenVerifier);
   expect(() => createTokenVerifier({})).toThrow();
+});
+
+test("dev verifier maps email (lower-cased) when present", async () => {
+  const secret = new TextEncoder().encode("y".repeat(32));
+  const dev = new DevTokenVerifier(secret);
+  const sign = (claims: Record<string, unknown>) =>
+    new SignJWT(claims)
+      .setProtectedHeader({ alg: "HS256" })
+      .setSubject("u1")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(secret);
+  expect((await dev.verify(await sign({ mfa: true, email: " Me@X.IN " }))).email).toBe("me@x.in");
+  expect("email" in (await dev.verify(await sign({ mfa: true })))).toBe(false);
 });

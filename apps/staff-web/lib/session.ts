@@ -1,28 +1,49 @@
-import { type Principal, ROLES, type Role, isRole } from "@dentalos/contracts";
+import {
+  type Permission,
+  type Principal,
+  ROLES,
+  type Resource,
+  type Role,
+  can,
+  isRole,
+} from "@dentalos/contracts";
+import { STAFF_DIRECTORY, branches as FIXTURE_BRANCHES } from "./api/fixtures";
 
 /**
  * DEV-ONLY stand-in for the real session (Cognito + /me, next M0 item). The server remains the
  * authority for every permission; this only decides what the UI shows.
- * Pick a role with NEXT_PUBLIC_DEV_ROLE (e.g. RECEPTIONIST) to preview role-specific navigation.
+ * Pick a role with NEXT_PUBLIC_DEV_ROLE (e.g. OWNER, RECEPTIONIST) to preview role-specific screens.
+ * Branch ids match the mock fixtures so mock mode and the switcher agree.
  */
 const envRole = process.env.NEXT_PUBLIC_DEV_ROLE;
 const role: Role = isRole(envRole) && envRole !== "PATIENT" ? envRole : "MANAGER";
 
-export const DEV_BRANCHES = [
-  { id: "b1", name: "Saket" },
-  { id: "b2", name: "Gurugram" },
-  { id: "b3", name: "Noida" },
-];
+export const DEV_BRANCHES = FIXTURE_BRANCHES.filter((b) => b.active).map((b) => ({
+  id: b.id,
+  name: b.name,
+}));
 
 export const DEV_PRINCIPAL: Principal = {
   userId: "dev-user",
   tenantId: "00000000-0000-0000-0000-000000000001",
   roles: [role],
   orgWide: role === "OWNER" || role === "ACCOUNTANT",
-  branchScope: ["b1"],
+  branchScope: [DEV_BRANCHES[0]?.id ?? ""],
 };
 export const DEV_USER = {
   name: "Asha Verma",
   roleLabel: role.charAt(0) + role.slice(1).toLowerCase(),
 };
+
+/** Display-only permission check against the DEV principal. Never a security boundary. */
+export const canDo = (perm: Permission, resource?: Resource) => can(DEV_PRINCIPAL, perm, resource);
+
+/** Branches the DEV principal may act in (all when orgWide). */
+export const scopedBranchIds = (all: { id: string }[]) =>
+  DEV_PRINCIPAL.orgWide ? all.map((b) => b.id) : DEV_PRINCIPAL.branchScope;
+
+/** Human label for a staff user id. The membership API returns ids only (see Flags). */
+export const userLabel = (userId: string) => STAFF_DIRECTORY[userId]?.name ?? userId;
+export const userEmail = (userId: string) => STAFF_DIRECTORY[userId]?.email;
+
 export { ROLES };

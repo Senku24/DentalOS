@@ -23,6 +23,8 @@ the patient portal uses a separate self-scoped surface.
 | `patient:write` | tenant | ✔ | ✔ | ✔ | ✔ |  |
 | `patient:merge` | tenant | ✔ | ✔ |  |  |  |
 | `patient:export` | org | ✔ |  |  |  |  |
+| `medical:read` | tenant | ✔ | ✔ | ✔ | ✔ |  |
+| `medical:write` | tenant |  |  | ✔ | ✔ |  |
 | `document:read` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `document:write` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `consent:manage` | branch | ✔ | ✔ | ✔ | ✔ |  |

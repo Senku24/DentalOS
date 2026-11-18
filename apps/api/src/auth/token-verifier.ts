@@ -6,6 +6,11 @@ export interface VerifiedClaims {
   mfa: boolean;
   /** Epoch seconds of the user's last interactive authentication (drives step-up checks). */
   authTime: number;
+  /**
+   * Lower-cased e-mail address the IdP has VERIFIED for this user; absent when unknown/unverified.
+   * Used to bind invitation acceptance to the invited address.
+   */
+  email?: string;
 }
 
 /** Abstraction over the managed IdP (PRD 6.8). DentalOS stays authoritative for membership/roles. */
@@ -23,6 +28,8 @@ export class DevTokenVerifier implements TokenVerifier {
       sub: payload.sub,
       mfa: payload.mfa === true,
       authTime: numberClaim(payload, "auth_time") ?? payload.iat ?? 0,
+      // Dev tokens are minted locally and trusted as-is (no email_verified ceremony).
+      ...emailClaim(payload, true),
     };
   }
 }
@@ -45,6 +52,12 @@ export interface CognitoConfig {
 
 const numberClaim = (p: JWTPayload, k: string) =>
   typeof p[k] === "number" ? (p[k] as number) : undefined;
+
+/** `{ email }` (lower-cased) when the claim is a non-empty string and `verified`; otherwise `{}`. */
+const emailClaim = (p: JWTPayload, verified: boolean): { email?: string } => {
+  const e = typeof p.email === "string" ? p.email.trim().toLowerCase() : "";
+  return verified && e ? { email: e } : {};
+};
 
 /**
  * Verifies Cognito ACCESS tokens (signature via the pool's JWKS, issuer, expiry, token_use, client_id).
@@ -76,7 +89,15 @@ export class CognitoTokenVerifier implements TokenVerifier {
     if (!payload.sub) throw new Error("missing sub");
     const authTime = numberClaim(payload, "auth_time");
     if (authTime === undefined) throw new Error("missing auth_time");
-    return { sub: payload.sub, mfa: this.cfg.mfaEnforcedByPool, authTime };
+    // Cognito access tokens carry `email`/`email_verified` only when a pre-token-generation trigger
+    // (V2) adds them; without both, `email` is absent and email-bound flows (invite accept) refuse.
+    const verified = payload.email_verified === true || payload.email_verified === "true";
+    return {
+      sub: payload.sub,
+      mfa: this.cfg.mfaEnforcedByPool,
+      authTime,
+      ...emailClaim(payload, verified),
+    };
   }
 }
 

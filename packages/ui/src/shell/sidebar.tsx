@@ -3,8 +3,14 @@ import { Stethoscope } from "lucide-react";
 import { useLink } from "../link";
 import type { NavItem } from "./types";
 
-const isActive = (current: string, href: string) =>
+const matches = (current: string, href: string) =>
   href === "/" ? current === "/" : current === href || current.startsWith(`${href}/`);
+
+/** Only the most specific matching item is current (e.g. /patients/duplicates vs /patients). */
+const activeHref = (current: string, items: NavItem[]) =>
+  items
+    .filter((it) => matches(current, it.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
 export function Brand({ name }: { name: string }) {
   return (
@@ -24,6 +30,7 @@ export function SidebarNav({
   onNavigate,
 }: { items: NavItem[]; currentPath: string; onNavigate?: () => void }) {
   const Link = useLink();
+  const active = activeHref(currentPath, items);
   let lastSection: string | undefined;
   return (
     <nav className="dos-nav" aria-label="Primary">
@@ -37,7 +44,7 @@ export function SidebarNav({
             <Link
               href={it.href}
               className="dos-nav__link"
-              aria-current={isActive(currentPath, it.href) ? "page" : undefined}
+              aria-current={it.href === active ? "page" : undefined}
               onClick={onNavigate}
               title={it.label}
             >

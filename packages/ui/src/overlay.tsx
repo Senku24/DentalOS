@@ -34,12 +34,20 @@ function Head({ title, description }: { title: string; description?: string }) {
 }
 
 /** Modal dialog: focus trapped, Esc closes, focus returns to the trigger (Radix). */
-export function Dialog({ open, onOpenChange, title, description, children, footer }: OverlayProps) {
+export function Dialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+  footer,
+  size = "md",
+}: OverlayProps & { size?: "md" | "lg" }) {
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>
       <RD.Portal>
         <RD.Overlay className="dos-overlay" />
-        <RD.Content className="dos-dialog">
+        <RD.Content className="dos-dialog" data-size={size}>
           <Head title={title} description={description} />
           <div className="dos-overlay-body">{children}</div>
           {footer ? <div className="dos-overlay-foot">{footer}</div> : null}

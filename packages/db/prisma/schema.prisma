@@ -7,6 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Conventions (see docs/M1-org-patients.md):
+//  - Every table except Tenant is tenant-owned (`tenantId`), FORCE RLS + `tenant_isolation` policy.
+//  - Relations between tenant-owned rows use COMPOSITE foreign keys `(tenantId, xId) -> X(tenantId, id)`
+//    so a row can never reference another tenant's row, even with a guessed UUID (FK checks bypass RLS).
+//  - Money is integer paise (`...Paise`). User ids are the IdP subject (`String`), as in Membership.
+//  - Effective-dated rows (`effectiveFrom`/`effectiveTo`, `effectiveTo` exclusive, NULL = open) keep history:
+//    close the open row and insert a new one; never rewrite past rows.
+
 enum Role {
   OWNER
   MANAGER
@@ -16,36 +24,185 @@ enum Role {
   PATIENT
 }
 
+enum OnboardingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum PatientLifecycleStage {
+  REGISTERED
+  ACTIVE
+  IN_TREATMENT
+  FOLLOW_UP
+  RECALL
+  INACTIVE
+}
+
+enum IntakeType {
+  APPOINTMENT
+  WALK_IN
+  URGENT
+  ENQUIRY
+}
+
+enum IdentityVerificationMethod {
+  IN_PERSON_DOCUMENT
+  OTP_PHONE
+  OTP_EMAIL
+  GUARDIAN
+}
+
+enum EnquirySource {
+  WALK_IN
+  PHONE
+  WEBSITE
+  WHATSAPP
+  REFERRAL
+  SOCIAL
+  CAMPAIGN
+  OTHER
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  LOST
+}
+
+enum Severity {
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+enum ConsentStatus {
+  GRANTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum CommChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  VOICE
+}
+
+enum CommPurpose {
+  TRANSACTIONAL
+  REMINDER
+  MARKETING
+}
+
+enum DocumentCategory {
+  ID_PROOF
+  CONSENT_FORM
+  REFERRAL
+  LAB_REPORT
+  XRAY
+  PHOTO
+  PRESCRIPTION
+  INSURANCE
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING_UPLOAD
+  AVAILABLE
+  DELETED
+}
+
+enum DuplicateStatus {
+  PENDING
+  DISMISSED
+  MERGED
+}
+
 model Tenant {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  createdAt DateTime @default(now())
-  branches  Branch[]
-  members   Membership[]
+  id                String            @id @default(uuid()) @db.Uuid
+  name              String
+  /// Organisation settings (display, defaults). Not for secrets.
+  settings          Json              @default("{}")
+  onboardingStatus  OnboardingStatus  @default(PENDING)
+  onboardedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @default(now()) @updatedAt
+  branches          Branch[]
+  members           Membership[]
+  invitations       StaffInvitation[]
+  serviceCategories ServiceCategory[]
+  services          Service[]
+  patients          Patient[]
 }
 
 model Branch {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  name      String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  id                 String                    @id @default(uuid()) @db.Uuid
+  tenantId           String                    @db.Uuid
+  /// Short human code, unique per tenant (e.g. "BLR-01"). Stored upper-case.
+  code               String
+  name               String
+  active             Boolean                   @default(true)
+  addressLine1       String?
+  addressLine2       String?
+  city               String?
+  state              String?
+  postalCode         String?
+  country            String                    @default("IN")
+  phone              String?
+  email              String?
+  /// IANA zone, e.g. "Asia/Kolkata".
+  timezone           String                    @default("Asia/Kolkata")
+  /// { mon: [{ open: "09:00", close: "13:00" }, ...], ... } — see @dentalos/validation `workingHours`.
+  workingHours       Json                      @default("{}")
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @default(now()) @updatedAt
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id])
+  dentistAssignments DentistBranchAssignment[]
+  priceOverrides     BranchPriceOverride[]
+  originPatients     Patient[]
+  enquiries          PatientEnquiry[]
+  documents          PatientDocument[]
+  medicalHistories   PatientMedicalHistory[]
+  consents           PatientConsent[]
 
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
   @@index([tenantId])
 }
 
 model Membership {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  userId      String
-  /** A user may hold several roles (e.g. owner who also treats patients); permissions are the union. */
-  roles       Role[]
-  /** Organisation-wide access. When false, access is limited to `branchScope`. */
-  orgWide     Boolean  @default(false)
-  branchScope String[] @default([])
-  createdAt   DateTime @default(now())
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  id                 String                    @id @default(uuid()) @db.Uuid
+  tenantId           String                    @db.Uuid
+  userId             String
+  /**
+   * A user may hold several roles (e.g. owner who also treats patients); permissions are the union.
+   */
+  roles              Role[]
+  /**
+   * Organisation-wide access. When false, access is limited to `branchScope`.
+   */
+  orgWide            Boolean                   @default(false)
+  branchScope        String[]                  @default([])
+  createdAt          DateTime                  @default(now())
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id])
+  dentistAssignments DentistBranchAssignment[]
 
   @@unique([tenantId, userId])
   @@index([tenantId])
@@ -69,4 +226,386 @@ model AuditEvent {
 
   @@unique([tenantId, chainPos])
   @@index([tenantId, createdAt])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Organisation: staff invitations and dentist ↔ branch assignments
+// ---------------------------------------------------------------------------------------------
+
+/// Pending staff invite. Only a SHA-256 hash of the token is stored; the raw token goes in the link.
+/// At most one PENDING invite per (tenant, email) — partial unique index in SQL.
+model StaffInvitation {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @db.Uuid
+  /// Lower-cased, trimmed.
+  email       String
+  roles       Role[]
+  orgWide     Boolean          @default(false)
+  branchScope String[]         @default([])
+  tokenHash   String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  invitedBy   String
+  acceptedBy  String?
+  acceptedAt  DateTime?
+  revokedBy   String?
+  revokedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+/// Effective-dated. A transfer closes the open row (effectiveTo = transfer date) and opens a new one;
+/// history is never rewritten (PRD 2.5). One OPEN row per (dentist, branch) — partial unique index in SQL.
+model DentistBranchAssignment {
+  id            String     @id @default(uuid()) @db.Uuid
+  tenantId      String     @db.Uuid
+  userId        String
+  branchId      String     @db.Uuid
+  effectiveFrom DateTime   @db.Date
+  /// Exclusive. NULL = current.
+  effectiveTo   DateTime?  @db.Date
+  createdBy     String
+  createdAt     DateTime   @default(now())
+  member        Membership @relation(fields: [tenantId, userId], references: [tenantId, userId], onDelete: Restrict)
+  branch        Branch     @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, branchId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Service catalogue and pricing
+// ---------------------------------------------------------------------------------------------
+
+model ServiceCategory {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  name      String
+  sortOrder Int       @default(0)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  services  Service[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Service {
+  id             String                @id @default(uuid()) @db.Uuid
+  tenantId       String                @db.Uuid
+  categoryId     String?               @db.Uuid
+  /// Unique per tenant, upper-case (e.g. "RCT-MOLAR").
+  code           String
+  name           String
+  description    String?
+  durationMin    Int
+  /// Central price in paise (₹1 = 100 paise). Branch overrides live in BranchPriceOverride.
+  basePricePaise Int
+  taxable        Boolean               @default(false)
+  active         Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @default(now()) @updatedAt
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
+  category       ServiceCategory?      @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  priceOverrides BranchPriceOverride[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, categoryId])
+  @@index([tenantId(ops: raw("uuid_ops")), name(ops: raw("gin_trgm_ops"))], map: "Service_name_trgm_idx", type: Gin)
+}
+
+/// Effective-dated, audited branch price. One OPEN row (effectiveTo IS NULL) per (service, branch) —
+/// partial unique index in SQL. Changing a price closes the open row and inserts a new one.
+model BranchPriceOverride {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  serviceId     String    @db.Uuid
+  branchId      String    @db.Uuid
+  pricePaise    Int
+  reason        String
+  setBy         String
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+  service       Service   @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  branch        Branch    @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+  @@index([tenantId, serviceId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Patients (shared across the tenant's branches, PRD 2.4)
+// ---------------------------------------------------------------------------------------------
+
+model Patient {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  tenantId                   String                      @db.Uuid
+  /// Branch where the patient was first registered. Never changes.
+  originBranchId             String                      @db.Uuid
+  /// Optional human-readable patient number, unique per tenant.
+  mrn                        String?
+  firstName                  String
+  middleName                 String?
+  lastName                   String?
+  preferredName              String?
+  dob                        DateTime?                   @db.Date
+  sex                        Sex                         @default(UNKNOWN)
+  /// E.164, e.g. "+919876543210".
+  phone                      String?
+  altPhone                   String?
+  email                      String?
+  addressLine1               String?
+  addressLine2               String?
+  city                       String?
+  state                      String?
+  postalCode                 String?
+  country                    String                      @default("IN")
+  /// App-maintained via @dentalos/validation normalisers; used for search + duplicate matching.
+  nameNormalized             String
+  phoneNormalized            String?
+  emailNormalized            String?
+  lifecycleStage             PatientLifecycleStage       @default(REGISTERED)
+  intakeType                 IntakeType
+  /// Set when this record was merged into another (this row is then a read-only tombstone).
+  mergedIntoId               String?                     @db.Uuid
+  mergedAt                   DateTime?
+  identityVerifiedAt         DateTime?
+  identityVerifiedBy         String?
+  identityVerificationMethod IdentityVerificationMethod?
+  /// e.g. "AADHAAR", "PAN", "PASSPORT", "DL". Never store full government id numbers.
+  identityDocumentType       String?
+  identityDocumentLast4      String?
+  createdBy                  String
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @default(now()) @updatedAt
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id])
+  originBranch               Branch                      @relation(fields: [tenantId, originBranchId], references: [tenantId, id], onDelete: Restrict)
+  mergedInto                 Patient?                    @relation("PatientMerge", fields: [tenantId, mergedIntoId], references: [tenantId, id], onDelete: Restrict)
+  mergedFrom                 Patient[]                   @relation("PatientMerge")
+  enquiries                  PatientEnquiry[]
+  medicalHistories           PatientMedicalHistory[]
+  allergies                  PatientAllergy[]
+  alerts                     PatientAlert[]
+  consents                   PatientConsent[]
+  communicationPreferences   CommunicationPreference[]
+  documents                  PatientDocument[]
+  mergesAsSurvivor           PatientMergeRecord[]        @relation("MergeSurvivor")
+  mergesAsMerged             PatientMergeRecord[]        @relation("MergeMerged")
+  duplicatesAsA              DuplicateCandidate[]        @relation("DuplicateA")
+  duplicatesAsB              DuplicateCandidate[]        @relation("DuplicateB")
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, mrn])
+  @@index([tenantId])
+  @@index([tenantId, originBranchId])
+  @@index([tenantId, phoneNormalized])
+  @@index([tenantId, emailNormalized])
+  @@index([tenantId, dob])
+  @@index([tenantId, mergedIntoId])
+  @@index([tenantId(ops: raw("uuid_ops")), nameNormalized(ops: raw("gin_trgm_ops"))], map: "Patient_name_trgm_idx", type: Gin)
+  @@index([tenantId(ops: raw("uuid_ops")), phoneNormalized(ops: raw("gin_trgm_ops"))], map: "Patient_phone_trgm_idx", type: Gin)
+}
+
+/// Lightweight lead (not a CRM, PRD 4.2).
+model PatientEnquiry {
+  id                 String        @id @default(uuid()) @db.Uuid
+  tenantId           String        @db.Uuid
+  branchId           String?       @db.Uuid
+  name               String
+  phone              String?
+  phoneNormalized    String?
+  email              String?
+  source             EnquirySource
+  areaOfInterest     String?
+  notes              String?
+  status             EnquiryStatus @default(NEW)
+  convertedPatientId String?       @db.Uuid
+  convertedAt        DateTime?
+  createdBy          String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @default(now()) @updatedAt
+  branch             Branch?       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  convertedPatient   Patient?      @relation(fields: [tenantId, convertedPatientId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, phoneNormalized])
+  @@index([tenantId(ops: raw("uuid_ops")), name(ops: raw("gin_trgm_ops"))], map: "PatientEnquiry_name_trgm_idx", type: Gin)
+}
+
+/// Append-only, versioned (UPDATE/DELETE revoked from the app role). New version = new row.
+model PatientMedicalHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  patientId   String   @db.Uuid
+  branchId    String?  @db.Uuid
+  version     Int
+  medical     Json     @default("{}")
+  dental      Json     @default("{}")
+  medications Json     @default("[]")
+  notes       String?
+  recordedBy  String
+  recordedAt  DateTime @default(now())
+  patient     Patient  @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch      Branch?  @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, patientId, version])
+  @@index([tenantId])
+}
+
+model PatientAllergy {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  patientId  String    @db.Uuid
+  substance  String
+  reaction   String?
+  severity   Severity  @default(MODERATE)
+  active     Boolean   @default(true)
+  notedBy    String
+  notedAt    DateTime  @default(now())
+  resolvedBy String?
+  resolvedAt DateTime?
+  patient    Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+}
+
+model PatientAlert {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  patientId  String    @db.Uuid
+  title      String
+  details    String?
+  severity   Severity
+  active     Boolean   @default(true)
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  resolvedBy String?
+  resolvedAt DateTime?
+  patient    Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+}
+
+model PatientConsent {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @db.Uuid
+  patientId   String        @db.Uuid
+  branchId    String?       @db.Uuid
+  /// Consent type code — see @dentalos/validation `CONSENT_TYPES` (PRD 12.2: catalogue still evolving).
+  type        String
+  version     String
+  status      ConsentStatus
+  /// "DIGITAL" | "PAPER" | "VERBAL"
+  method      String?
+  documentId  String?       @db.Uuid
+  capturedBy  String
+  grantedAt   DateTime?
+  withdrawnAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @default(now()) @updatedAt
+  patient     Patient       @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch      Branch?       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+}
+
+model CommunicationPreference {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @db.Uuid
+  patientId String      @db.Uuid
+  channel   CommChannel
+  purpose   CommPurpose @default(TRANSACTIONAL)
+  optIn     Boolean
+  updatedBy String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+  patient   Patient     @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, patientId, channel, purpose])
+  @@index([tenantId])
+}
+
+/// Object lives in S3 under the tenant prefix (StorageService). Soft-deleted only.
+model PatientDocument {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @db.Uuid
+  patientId   String           @db.Uuid
+  branchId    String           @db.Uuid
+  storageKey  String           @unique
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  sha256      String?
+  category    DocumentCategory @default(OTHER)
+  description String?
+  status      DocumentStatus   @default(PENDING_UPLOAD)
+  uploadedBy  String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+  deletedBy   String?
+  deletedAt   DateTime?
+  patient     Patient          @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch      Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+  @@index([tenantId, branchId])
+}
+
+/// Append-only (UPDATE/DELETE revoked from the app role). `snapshot` holds both records pre-merge.
+model PatientMergeRecord {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @db.Uuid
+  survivorId           String   @db.Uuid
+  mergedId             String   @db.Uuid
+  duplicateCandidateId String?  @db.Uuid
+  performedBy          String
+  approvedBy           String?
+  reason               String
+  snapshot             Json
+  createdAt            DateTime @default(now())
+  survivor             Patient  @relation("MergeSurvivor", fields: [tenantId, survivorId], references: [tenantId, id], onDelete: Restrict)
+  merged               Patient  @relation("MergeMerged", fields: [tenantId, mergedId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, survivorId])
+  @@index([tenantId, mergedId])
+}
+
+/// Canonical pair ordering: patientAId < patientBId (CHECK in SQL), unique per tenant.
+model DuplicateCandidate {
+  id         String          @id @default(uuid()) @db.Uuid
+  tenantId   String          @db.Uuid
+  patientAId String          @db.Uuid
+  patientBId String          @db.Uuid
+  /// 0–100.
+  score      Int
+  reasons    Json            @default("[]")
+  status     DuplicateStatus @default(PENDING)
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @default(now()) @updatedAt
+  patientA   Patient         @relation("DuplicateA", fields: [tenantId, patientAId], references: [tenantId, id], onDelete: Restrict)
+  patientB   Patient         @relation("DuplicateB", fields: [tenantId, patientBId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, patientAId, patientBId])
+  @@index([tenantId])
+  @@index([tenantId, status])
 }
