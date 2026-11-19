@@ -25,7 +25,12 @@ defaults, pending product sign-off.** Permission matrix: `docs/permissions.md` (
       when Wave 3 needs them). No date library: `zonedToUtc` / `utcToZoned` / `minutesToHHMM` (Intl) in `scheduling.ts`.
 
 ## Not done
-- [ ] Wave 1 — S1 scheduling API, C1 clinical API, P1 plans & consent API.
+- [x] Wave 1 — S1 scheduling API (chairs, working hours, availability, appointments, walk-ins, reschedule, check-in
+      queue + SSE), C1 clinical API (encounters, notes, sign/amend, odontogram, diagnoses, procedures, attachments,
+      clinical context), P1 plans & consent API (plans, frozen estimates, versions/diff, partial acceptance, sessions,
+      consent templates, consent-gated approval). Each adversarially verified twice; decisions in ADR 0003 addendum.
+      New 409 codes: `working_hours_in_force`, `check_in_too_early`, `check_in_too_late`, `item_still_scheduled`,
+      `item_has_scheduled_sessions`, `appointment_linked_elsewhere`; 400 `invalid_plan_item`, `dentist_not_in_branch`.
 - [ ] Wave 2 — U1 front desk UI, U2 clinical workspace UI, X1 carry-overs.
 - [ ] Wave 3 — integration, OpenAPI ↔ `routes.ts` contract test, Playwright e2e + axe in CI.
 - [ ] ADR 0003 product sign-off (all sections; see its "Open questions").

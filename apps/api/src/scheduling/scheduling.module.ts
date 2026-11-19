@@ -1,4 +1,9 @@
 import { Module } from "@nestjs/common";
+import { AppointmentsController, FrontDeskController } from "./appointments.controller";
+import { AppointmentsService } from "./appointments.service";
+import { AvailabilityController, AvailabilityService } from "./availability.controller";
+import { ChairsController, ChairsService } from "./chairs.controller";
+import { WorkingHoursController, WorkingHoursService } from "./working-hours.controller";
 
 /**
  * M2 Scheduling & front desk (PRD 4.3): chairs, working hours, availability, appointments
@@ -8,7 +13,13 @@ import { Module } from "@nestjs/common";
  * Map DB errors with `../common/db-errors` (23P01 -> 409 slot_conflict). See docs/M2-clinical.md.
  */
 @Module({
-  controllers: [],
-  providers: [],
+  controllers: [
+    ChairsController,
+    WorkingHoursController,
+    AvailabilityController,
+    AppointmentsController,
+    FrontDeskController,
+  ],
+  providers: [ChairsService, WorkingHoursService, AvailabilityService, AppointmentsService],
 })
 export class SchedulingModule {}

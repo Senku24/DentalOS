@@ -208,3 +208,30 @@ Status: **proposed — needs product sign-off.**
 6. Should walk-ins be allowed to overbook a busy dentist (today: book unassigned instead)?
 7. Diagnosis coding system (ICD-10 vs internal) and condition catalogue ownership.
 8. Consent text approval workflow (who signs off a template version) and retention.
+
+## Addendum — Wave 1 implementation decisions (proposed, needs sign-off)
+
+Scheduling
+- Walk-ins must start within 30 min of now (else 400) and skip the working-hours rule. Visits that are CHECKED_IN or
+  IN_CHAIR (or inside the walk-in window) may be re-assigned a dentist/chair without the hours check; otherwise PATCH
+  applies the hours rule to the new dentist/chair (409 `outside_working_hours`).
+- Check-in only on the visit's branch-local day (or within the walk-in window across midnight): future day → 409
+  `check_in_too_early {eligibleFrom}`, past day → 409 `check_in_too_late {startsAt}`.
+- Working hours already in force today can only be replaced from tomorrow (409 `working_hours_in_force`).
+- Concurrent bookings that deadlock (40P01/40001) are retried; the loser gets 409 `slot_conflict`.
+
+Clinical
+- The treating dentist needs `clinical:sign` for the encounter's branch from Membership scope (or org-wide). A
+  `DentistBranchAssignment` alone does not grant clinical access (open question: should assignments extend scope?).
+- Odontogram: rows charted in an encounter are branch-scoped for writes; encounter-less rows are patient-level; reads
+  are patient-level with redaction.
+- ProcedureRecord: IN_PROGRESS → COMPLETED | ABANDONED. A procedure may link to an ACCEPTED, SCHEDULED or IN_PROGRESS
+  plan item of an open plan the caller can `plan:read`; otherwise 400 `invalid_plan_item`.
+
+Plans
+- PlanItemSession status is server-derived. Item COMPLETED is refused while any session is SCHEDULED (409
+  `item_has_scheduled_sessions`) and cancels remaining PLANNED sessions.
+- SCHEDULED → ACCEPTED undo and ACCEPTED → DEFERRED are refused while the item is still booked (409
+  `item_still_scheduled`).
+- One plan item per appointment (409 `appointment_linked_elsewhere`); the binding is cleared when the last open session
+  releases the appointment (plans may write `Appointment.planItemId = null`).
