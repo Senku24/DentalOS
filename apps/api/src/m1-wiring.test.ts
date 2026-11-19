@@ -7,15 +7,18 @@ import { NestFactory } from "@nestjs/core";
 import { AuditService } from "./audit/audit.service";
 import { PRISMA } from "./auth/auth.guard";
 import { CatalogModule } from "./catalog/catalog.module";
+import { ClinicalModule } from "./clinical/clinical.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { OrgModule } from "./org/org.module";
 import { PatientsModule } from "./patients/patients.module";
+import { PlansModule } from "./plans/plans.module";
+import { SchedulingModule } from "./scheduling/scheduling.module";
 import { StorageService } from "./storage/storage.service";
 
 process.env.DEV_JWT_SECRET ??= "test-secret-test-secret-test-secret";
 process.env.DATABASE_URL ??= "postgresql://dentalos_app:dentalos_app@localhost:5433/dentalos";
 
-// Proves the M1 feature modules can inject the @Global AppModule providers without importing anything.
+// Proves the M1 + M2 feature modules can inject the @Global AppModule providers without importing anything.
 @Injectable()
 class Probe {
   constructor(
@@ -25,7 +28,15 @@ class Probe {
   ) {}
 }
 
-const modules = [OrgModule, CatalogModule, PatientsModule, DocumentsModule];
+const modules = [
+  OrgModule,
+  CatalogModule,
+  PatientsModule,
+  DocumentsModule,
+  SchedulingModule,
+  ClinicalModule,
+  PlansModule,
+];
 // Swap each module's providers AND controllers for the probe: the real controllers depend on the
 // module's real providers, and Nest would otherwise fail to resolve them (abortOnError exits the process).
 const saved = modules.map((m) => ({

@@ -20,7 +20,7 @@ import { AuditService } from "../audit/audit.service";
 import { PRISMA } from "../auth/auth.guard";
 import type { Principal } from "../auth/roles";
 import { assertCan } from "../common/principal";
-import { findActivePatient, findPatientOr404 } from "./patient-common";
+import { findActivePatient, findPatientOr404, lineageIds } from "./patient-common";
 
 const toConsent = (c: PatientConsent): ConsentResponse & { branchId: string | null } => ({
   id: c.id,
@@ -59,8 +59,9 @@ export class ConsentService {
   async list(p: Principal, patientId: string) {
     const rows = await withTenant(this.prisma, p.tenantId, async (tx) => {
       await findPatientOr404(tx, patientId);
+      // Plan-version consents of merged records stay on the merged id: read the lineage.
       return tx.patientConsent.findMany({
-        where: { patientId },
+        where: { patientId: { in: await lineageIds(tx, patientId) } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
     });

@@ -135,6 +135,96 @@ enum DuplicateStatus {
   MERGED
 }
 
+// --- M2 clinical operations (ADR 0003: state machines are proposed defaults, pending sign-off) ---
+
+enum WorkingHoursScope {
+  BRANCH
+  DENTIST
+  CHAIR
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  CHECKED_IN
+  IN_CHAIR
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum AppointmentSource {
+  SCHEDULED
+  WALK_IN
+  URGENT
+}
+
+enum EncounterStatus {
+  OPEN
+  SIGNED
+}
+
+enum ClinicalNoteKind {
+  SUBJECTIVE
+  OBJECTIVE
+  ASSESSMENT
+  PLAN
+  GENERAL
+}
+
+enum Dentition {
+  PERMANENT
+  PRIMARY
+}
+
+enum ToothRecordStatus {
+  CURRENT
+  HISTORICAL
+}
+
+enum ProcedureStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum TreatmentPlanStatus {
+  DRAFT
+  PRESENTED
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PlanItemStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  DEFERRED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PlanItemSessionStatus {
+  PLANNED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum ConsentTemplateType {
+  TREATMENT_PLAN
+  PROCEDURE
+  RADIOGRAPH
+  CLINICAL_PHOTOGRAPHY
+  COMMUNICATION
+}
+
 model Tenant {
   id                String            @id @default(uuid()) @db.Uuid
   name              String
@@ -150,6 +240,7 @@ model Tenant {
   serviceCategories ServiceCategory[]
   services          Service[]
   patients          Patient[]
+  consentTemplates  ConsentTemplate[]
 }
 
 model Branch {
@@ -171,6 +262,8 @@ model Branch {
   timezone           String                    @default("Asia/Kolkata")
   /// { mon: [{ open: "09:00", close: "13:00" }, ...], ... } — see @dentalos/validation `workingHours`.
   workingHours       Json                      @default("{}")
+  /// Branch-level knobs, e.g. { scheduling: { noShowGraceMinutes: 15 } } — see @dentalos/validation `branchSettings`.
+  settings           Json                      @default("{}")
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @default(now()) @updatedAt
   tenant             Tenant                    @relation(fields: [tenantId], references: [id])
@@ -181,6 +274,11 @@ model Branch {
   documents          PatientDocument[]
   medicalHistories   PatientMedicalHistory[]
   consents           PatientConsent[]
+  chairs             Chair[]
+  scheduleHours      WorkingHours[]
+  appointments       Appointment[]
+  encounters         Encounter[]
+  treatmentPlans     TreatmentPlan[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -200,6 +298,9 @@ model Membership {
    */
   orgWide            Boolean                   @default(false)
   branchScope        String[]                  @default([])
+  /// Display name / e-mail for staff lists (M2 carry-over). E-mail is lower-cased (DB CHECK).
+  displayName        String?
+  email              String?
   createdAt          DateTime                  @default(now())
   tenant             Tenant                    @relation(fields: [tenantId], references: [id])
   dentistAssignments DentistBranchAssignment[]
@@ -316,6 +417,8 @@ model Service {
   tenant         Tenant                @relation(fields: [tenantId], references: [id])
   category       ServiceCategory?      @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
   priceOverrides BranchPriceOverride[]
+  planItems      PlanItem[]
+  procedures     ProcedureRecord[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -408,6 +511,12 @@ model Patient {
   mergesAsMerged             PatientMergeRecord[]        @relation("MergeMerged")
   duplicatesAsA              DuplicateCandidate[]        @relation("DuplicateA")
   duplicatesAsB              DuplicateCandidate[]        @relation("DuplicateB")
+  appointments               Appointment[]
+  encounters                 Encounter[]
+  toothRecords               ToothRecord[]
+  diagnoses                  Diagnosis[]
+  procedures                 ProcedureRecord[]
+  treatmentPlans             TreatmentPlan[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, mrn])
@@ -507,28 +616,40 @@ model PatientAlert {
 }
 
 model PatientConsent {
-  id               String        @id @default(uuid()) @db.Uuid
-  tenantId         String        @db.Uuid
-  patientId        String        @db.Uuid
-  branchId         String?       @db.Uuid
+  id                 String                  @id @default(uuid()) @db.Uuid
+  tenantId           String                  @db.Uuid
+  patientId          String                  @db.Uuid
+  branchId           String?                 @db.Uuid
   /// Consent type code — see @dentalos/validation `CONSENT_TYPES` (PRD 12.2: catalogue still evolving).
-  type             String
-  version          String
-  status           ConsentStatus
+  type               String
+  version            String
+  status             ConsentStatus
   /// "DIGITAL" | "PAPER" | "VERBAL"
-  method           String?
-  documentId       String?       @db.Uuid
-  capturedBy       String
-  grantedAt        DateTime?
-  withdrawnAt      DateTime?
-  withdrawalReason String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @default(now()) @updatedAt
-  patient          Patient       @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  branch           Branch?       @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  method             String?
+  documentId         String?                 @db.Uuid
+  capturedBy         String
+  grantedAt          DateTime?
+  withdrawnAt        DateTime?
+  withdrawalReason   String?
+  /// M2: consent signed against a versioned template (and, for TREATMENT_PLAN, a plan version of
+  /// the SAME patient — composite FK). Template-only types require templateVersionId (DB CHECK).
+  /// Merges leave plan-linked consents on the original patient id (read via lineage).
+  templateVersionId  String?                 @db.Uuid
+  planVersionId      String?                 @db.Uuid
+  /// Who signed: the patient or a guardian/representative (minors). "SELF" | "GUARDIAN" | "REPRESENTATIVE".
+  signerName         String?
+  signerRelationship String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @default(now()) @updatedAt
+  patient            Patient                 @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch             Branch?                 @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  templateVersion    ConsentTemplateVersion? @relation(fields: [tenantId, templateVersionId], references: [tenantId, id], onDelete: Restrict)
+  planVersion        TreatmentPlanVersion?   @relation(fields: [tenantId, planVersionId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
+  @@index([tenantId, templateVersionId])
+  @@index([tenantId, planVersionId])
 }
 
 model CommunicationPreference {
@@ -567,12 +688,17 @@ model PatientDocument {
   deletedBy     String?
   deletedAt     DateTime?
   deletedReason String?
+  /// M2: X-ray / photo attached to an encounter of the SAME patient (composite FK). Merges leave
+  /// encounter-attached documents on the original patient id with their encounter (read via lineage).
+  encounterId   String?          @db.Uuid
   patient       Patient          @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
   branch        Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  encounter     Encounter?       @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
   @@index([tenantId, branchId])
+  @@index([tenantId, encounterId])
 }
 
 /// Append-only (UPDATE/DELETE revoked from the app role). `snapshot` holds both records pre-merge.
@@ -616,4 +742,474 @@ model DuplicateCandidate {
   @@unique([tenantId, patientAId, patientBId])
   @@index([tenantId])
   @@index([tenantId, status])
+}
+
+// =============================================================================================
+// M2 — Clinical operations (PRD 3.4, 4.3–4.5, 7.5). Rules: docs/adr/0003-clinical-domain-rules.md
+// (proposed defaults, pending product sign-off). Hand-written SQL in 0006_m2_clinical adds the
+// btree_gist exclusion constraints, CHECKs, append-only grants and the signed-encounter triggers.
+// User ids (dentist, author, actor) are IdP subjects (text), deliberately NOT foreign keys to
+// Membership: attribution must survive a member being removed (PRD 2.5). Dentist columns are
+// checked against Membership when written (trigger tenant_member_guard).
+// Every link between two patient-owned rows carries patientId in its composite FK, so one
+// patient's rows can never be attached to another patient's (PlanItem, TreatmentPlanVersion and
+// PlanItemSession copy patientId from their plan for that reason).
+// =============================================================================================
+
+// ---------------------------------------------------------------------------------------------
+// Scheduling: chairs, working hours, appointments
+// ---------------------------------------------------------------------------------------------
+
+/// Dental chair / operatory. Deactivated, never deleted (DELETE revoked from the app role).
+model Chair {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @db.Uuid
+  branchId     String         @db.Uuid
+  /// Upper-case (DB CHECK), unique per branch (e.g. "OP-1").
+  code         String
+  name         String
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @default(now()) @updatedAt
+  branch       Branch         @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  workingHours WorkingHours[]
+  appointments Appointment[]
+
+  @@unique([tenantId, id])
+  /// Lets children prove "this chair belongs to that branch" with one composite FK.
+  @@unique([tenantId, branchId, id])
+  @@unique([tenantId, branchId, code])
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+}
+
+/// Effective-dated weekly sessions for a branch, a dentist (at a branch) or a chair. Several
+/// sessions per weekday are allowed (e.g. 09:00–13:00 and 17:00–21:00); overlapping open sessions
+/// for the same subject are rejected by an exclusion constraint. Change = close the open rows
+/// (effectiveTo) and insert new ones; never rewrite past rows.
+model WorkingHours {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @db.Uuid
+  scope         WorkingHoursScope
+  branchId      String            @db.Uuid
+  /// Required iff scope = DENTIST (IdP subject; must be a tenant member when set — trigger).
+  userId        String?
+  /// Required iff scope = CHAIR; must belong to `branchId` (composite FK).
+  chairId       String?           @db.Uuid
+  /// 0 = Sunday … 6 = Saturday (JS Date#getDay / Postgres EXTRACT(DOW)), in the branch time zone.
+  weekday       Int               @db.SmallInt
+  /// Minutes after local midnight, [startMinute, endMinute).
+  startMinute   Int               @db.SmallInt
+  endMinute     Int               @db.SmallInt
+  effectiveFrom DateTime          @db.Date
+  /// Exclusive. NULL = open.
+  effectiveTo   DateTime?         @db.Date
+  createdBy     String
+  createdAt     DateTime          @default(now())
+  branch        Branch            @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  chair         Chair?            @relation(fields: [tenantId, branchId, chairId], references: [tenantId, branchId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, branchId, scope])
+  @@index([tenantId, userId])
+  @@index([tenantId, chairId])
+}
+
+/// One booked visit. Reschedule = mark this row RESCHEDULED and insert a new row whose
+/// `rescheduledFromId` points here (history kept). Double-booking a dentist or chair among
+/// active statuses is rejected by exclusion constraints (SQLSTATE 23P01 -> 409 slot_conflict).
+model Appointment {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @db.Uuid
+  patientId          String             @db.Uuid
+  branchId           String             @db.Uuid
+  /// NULL = unassigned (PRD 4.3). Must be a tenant member when set (trigger).
+  dentistUserId      String?
+  /// Must belong to `branchId` (composite FK).
+  chairId            String?            @db.Uuid
+  /// See @dentalos/validation `APPOINTMENT_TYPES` (text so the catalogue can grow without a migration).
+  appointmentType    String
+  startsAt           DateTime           @db.Timestamptz(3)
+  endsAt             DateTime           @db.Timestamptz(3)
+  status             AppointmentStatus  @default(BOOKED)
+  source             AppointmentSource  @default(SCHEDULED)
+  rescheduledFromId  String?            @db.Uuid
+  /// Same patient's plan item (composite FK).
+  planItemId         String?            @db.Uuid
+  /// Required when status = CANCELLED (DB CHECK).
+  cancelReason       String?
+  /// Booking outside working hours needs `schedule:manage` and this reason (ADR 0003).
+  outsideHoursReason String?
+  notes              String?
+  checkedInAt        DateTime?
+  createdBy          String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @default(now()) @updatedAt
+  patient            Patient            @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch             Branch             @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  chair              Chair?             @relation(fields: [tenantId, branchId, chairId], references: [tenantId, branchId, id], onDelete: Restrict)
+  rescheduledFrom    Appointment?       @relation("AppointmentReschedule", fields: [tenantId, rescheduledFromId], references: [tenantId, id], onDelete: Restrict)
+  rescheduledTo      Appointment?       @relation("AppointmentReschedule")
+  planItem           PlanItem?          @relation(fields: [tenantId, planItemId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  events             AppointmentEvent[]
+  encounters         Encounter[]
+  planItemSessions   PlanItemSession[]
+
+  @@unique([tenantId, id])
+  /// Lets an encounter prove it belongs to the appointment's patient.
+  @@unique([tenantId, id, patientId])
+  /// At most one successor per rescheduled appointment.
+  @@unique([tenantId, rescheduledFromId])
+  @@index([tenantId])
+  @@index([tenantId, branchId, startsAt])
+  @@index([tenantId, dentistUserId, startsAt])
+  @@index([tenantId, chairId, startsAt])
+  @@index([tenantId, patientId, startsAt])
+  @@index([tenantId, planItemId])
+}
+
+/// Append-only status history with actor attribution (UPDATE/DELETE revoked from the app role).
+model AppointmentEvent {
+  id            String             @id @default(uuid()) @db.Uuid
+  tenantId      String             @db.Uuid
+  appointmentId String             @db.Uuid
+  /// NULL for the creation event.
+  fromStatus    AppointmentStatus?
+  toStatus      AppointmentStatus
+  actorId       String
+  reason        String?
+  at            DateTime           @default(now()) @db.Timestamptz(3)
+  appointment   Appointment        @relation(fields: [tenantId, appointmentId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, appointmentId, at])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Clinical records: encounters, notes, amendments, odontogram, diagnoses, procedures
+// ---------------------------------------------------------------------------------------------
+
+/// OPEN -> SIGNED, never reopened (DB trigger). Only the treating dentist signs (DB CHECK).
+/// Notes, diagnoses and procedures of a SIGNED encounter are immutable (DB trigger);
+/// corrections are append-only ClinicalNoteAmendment rows. Never deleted.
+model Encounter {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  tenantId              String                  @db.Uuid
+  patientId             String                  @db.Uuid
+  branchId              String                  @db.Uuid
+  /// At most one encounter per appointment; must be the same patient (composite FK).
+  appointmentId         String?                 @db.Uuid
+  /// Must be a tenant member when set (trigger).
+  treatingDentistUserId String
+  status                EncounterStatus         @default(OPEN)
+  openedBy              String
+  openedAt              DateTime                @default(now())
+  signedAt              DateTime?
+  signedBy              String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @default(now()) @updatedAt
+  patient               Patient                 @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch                Branch                  @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  appointment           Appointment?            @relation(fields: [tenantId, appointmentId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  notes                 ClinicalNote[]
+  amendments            ClinicalNoteAmendment[]
+  toothRecords          ToothRecord[]
+  diagnoses             Diagnosis[]
+  procedures            ProcedureRecord[]
+  documents             PatientDocument[]
+  treatmentPlans        TreatmentPlan[]
+  planItemSessions      PlanItemSession[]
+
+  @@unique([tenantId, id])
+  /// Lets clinical children prove they belong to the encounter's patient.
+  @@unique([tenantId, id, patientId])
+  @@unique([tenantId, appointmentId])
+  @@index([tenantId])
+  @@index([tenantId, patientId, openedAt])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, treatingDentistUserId, status])
+}
+
+/// Editable (and deletable) only while the encounter is OPEN — enforced by a DB trigger.
+model ClinicalNote {
+  id          String                  @id @default(uuid()) @db.Uuid
+  tenantId    String                  @db.Uuid
+  encounterId String                  @db.Uuid
+  kind        ClinicalNoteKind        @default(GENERAL)
+  body        String
+  authorId    String
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @default(now()) @updatedAt
+  encounter   Encounter               @relation(fields: [tenantId, encounterId], references: [tenantId, id], onDelete: Restrict)
+  amendments  ClinicalNoteAmendment[]
+
+  @@unique([tenantId, id])
+  /// Lets an amendment prove its note belongs to the same encounter.
+  @@unique([tenantId, encounterId, id])
+  @@index([tenantId])
+}
+
+/// Append-only correction of a SIGNED encounter (UPDATE/DELETE revoked; insert requires SIGNED).
+/// `noteId` NULL = amendment of the encounter as a whole (e.g. a diagnosis correction).
+model ClinicalNoteAmendment {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @db.Uuid
+  encounterId String        @db.Uuid
+  noteId      String?       @db.Uuid
+  body        String
+  reason      String
+  authorId    String
+  createdAt   DateTime      @default(now())
+  encounter   Encounter     @relation(fields: [tenantId, encounterId], references: [tenantId, id], onDelete: Restrict)
+  note        ClinicalNote? @relation(fields: [tenantId, encounterId, noteId], references: [tenantId, encounterId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, encounterId])
+  @@index([tenantId, noteId])
+}
+
+/// Odontogram entry: a condition on a tooth (surfaces empty) or on some of its surfaces.
+/// History is preserved: change = mark the old row HISTORICAL (the only UPDATE the DB allows)
+/// and insert a new CURRENT row. Never deleted. Snapshot = all CURRENT rows of the patient.
+model ToothRecord {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @db.Uuid
+  patientId    String            @db.Uuid
+  encounterId  String?           @db.Uuid
+  /// FDI two-digit code: permanent 11–18, 21–28, 31–38, 41–48; primary 51–55, 61–65, 71–75, 81–85 (DB CHECK).
+  toothCode    Int               @db.SmallInt
+  /// Must match the code (< 50 permanent) — DB CHECK.
+  dentition    Dentition
+  /// See @dentalos/validation `TOOTH_CONDITIONS` (text: catalogue still evolving, PRD 12.2).
+  condition    String
+  /// Subset of M,O,D,B,L,I,F,P valid for the tooth class (DB CHECK via fdi_valid_surfaces()).
+  surfaces     String[]          @default([])
+  notes        String?
+  status       ToothRecordStatus @default(CURRENT)
+  recordedBy   String
+  recordedAt   DateTime          @default(now())
+  supersededAt DateTime?
+  supersededBy String?
+  patient      Patient           @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  encounter    Encounter?        @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId, status])
+  @@index([tenantId, encounterId])
+}
+
+model Diagnosis {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  encounterId String    @db.Uuid
+  patientId   String    @db.Uuid
+  /// Coding system is open (ICD-10 / internal) — PRD 12.2.
+  code        String
+  label       String
+  toothCode   Int?      @db.SmallInt
+  surfaces    String[]  @default([])
+  notes       String?
+  diagnosedBy String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  patient     Patient   @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  encounter   Encounter @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, encounterId])
+  @@index([tenantId, patientId])
+}
+
+model ProcedureRecord {
+  id          String          @id @default(uuid()) @db.Uuid
+  tenantId    String          @db.Uuid
+  encounterId String          @db.Uuid
+  patientId   String          @db.Uuid
+  serviceId   String?         @db.Uuid
+  planItemId  String?         @db.Uuid
+  /// Free text when no catalogue service applies.
+  description String?
+  toothCode   Int?            @db.SmallInt
+  surfaces    String[]        @default([])
+  status      ProcedureStatus @default(COMPLETED)
+  notes       String?
+  performedBy String
+  performedAt DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @default(now()) @updatedAt
+  patient     Patient         @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  encounter   Encounter       @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  service     Service?        @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  planItem    PlanItem?       @relation(fields: [tenantId, planItemId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, encounterId])
+  @@index([tenantId, patientId])
+  @@index([tenantId, planItemId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Treatment plans & consent
+// ---------------------------------------------------------------------------------------------
+
+/// Several plans per patient. `currentVersion` = latest TreatmentPlanVersion (0 = never presented).
+/// Never deleted (cancel instead).
+model TreatmentPlan {
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @db.Uuid
+  patientId      String                 @db.Uuid
+  /// Branch whose effective prices the estimates were frozen at.
+  branchId       String                 @db.Uuid
+  encounterId    String?                @db.Uuid
+  title          String
+  notes          String?
+  status         TreatmentPlanStatus    @default(DRAFT)
+  currentVersion Int                    @default(0)
+  presentedAt    DateTime?
+  presentedBy    String?
+  approvedAt     DateTime?
+  approvedBy     String?
+  cancelReason   String?
+  createdBy      String
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @default(now()) @updatedAt
+  patient        Patient                @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch         Branch                 @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  encounter      Encounter?             @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  versions       TreatmentPlanVersion[]
+  items          PlanItem[]
+
+  @@unique([tenantId, id])
+  /// Lets versions and items prove they belong to the plan's patient.
+  @@unique([tenantId, id, patientId])
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+  @@index([tenantId, branchId, status])
+}
+
+/// Append-only snapshot (UPDATE/DELETE revoked) taken on every change once the plan is presented.
+model TreatmentPlanVersion {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @db.Uuid
+  planId    String           @db.Uuid
+  /// Copied from the plan (composite FK) so a consent can prove it is the same patient's version.
+  patientId String           @db.Uuid
+  version   Int
+  /// @dentalos/validation `planSnapshot`: plan header + every item (status, frozen estimate) + totals.
+  snapshot  Json
+  reason    String?
+  createdBy String
+  createdAt DateTime         @default(now())
+  plan      TreatmentPlan    @relation(fields: [tenantId, planId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  consents  PatientConsent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, patientId])
+  @@unique([tenantId, planId, version])
+  @@index([tenantId])
+}
+
+/// One procedure in a plan. `estimatePricePaise` is the branch's effective catalogue price frozen
+/// when the item was proposed (later catalogue changes never alter it).
+model PlanItem {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenantId           String            @db.Uuid
+  planId             String            @db.Uuid
+  /// Copied from the plan (composite FK) so appointments, procedures and sessions linking this
+  /// item must be the same patient's.
+  patientId          String            @db.Uuid
+  phase              Int               @default(1)
+  sequence           Int               @default(1)
+  serviceId          String            @db.Uuid
+  toothCode          Int?              @db.SmallInt
+  surfaces           String[]          @default([])
+  quantity           Int               @default(1)
+  /// Unit price in paise, frozen at proposal.
+  estimatePricePaise Int
+  /// "BASE" | "OVERRIDE" — where the frozen price came from.
+  priceSource        String
+  pricedAt           DateTime          @default(now())
+  status             PlanItemStatus    @default(PROPOSED)
+  notes              String?
+  decidedAt          DateTime?
+  decidedBy          String?
+  decisionReason     String?
+  createdBy          String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @default(now()) @updatedAt
+  plan               TreatmentPlan     @relation(fields: [tenantId, planId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  service            Service           @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  sessions           PlanItemSession[]
+  appointments       Appointment[]
+  procedures         ProcedureRecord[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, patientId])
+  @@index([tenantId])
+  @@index([tenantId, planId])
+  @@index([tenantId, serviceId])
+}
+
+/// A sitting of a multi-session procedure (e.g. RCT visit 2 of 3). Never deleted (cancel instead).
+model PlanItemSession {
+  id            String                @id @default(uuid()) @db.Uuid
+  tenantId      String                @db.Uuid
+  planItemId    String                @db.Uuid
+  /// Copied from the item: the linked appointment and encounter must be the same patient's.
+  patientId     String                @db.Uuid
+  sessionNo     Int
+  appointmentId String?               @db.Uuid
+  encounterId   String?               @db.Uuid
+  status        PlanItemSessionStatus @default(PLANNED)
+  notes         String?
+  createdBy     String
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @default(now()) @updatedAt
+  planItem      PlanItem              @relation(fields: [tenantId, planItemId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  appointment   Appointment?          @relation(fields: [tenantId, appointmentId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  encounter     Encounter?            @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+
+  @@unique([tenantId, planItemId, sessionNo])
+  @@index([tenantId])
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, encounterId])
+}
+
+/// Consent form template; its text lives in append-only versions. Deactivated, never deleted.
+model ConsentTemplate {
+  id             String                   @id @default(uuid()) @db.Uuid
+  tenantId       String                   @db.Uuid
+  /// Upper-case (DB CHECK), unique per tenant (e.g. "RCT-CONSENT").
+  code           String
+  type           ConsentTemplateType
+  title          String
+  active         Boolean                  @default(true)
+  /// Latest published version (0 = none yet).
+  currentVersion Int                      @default(0)
+  createdBy      String
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @default(now()) @updatedAt
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id])
+  versions       ConsentTemplateVersion[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+/// Append-only (UPDATE/DELETE revoked). A signed PatientConsent references the exact version.
+model ConsentTemplateVersion {
+  id         String           @id @default(uuid()) @db.Uuid
+  tenantId   String           @db.Uuid
+  templateId String           @db.Uuid
+  version    Int
+  body       String
+  createdBy  String
+  createdAt  DateTime         @default(now())
+  template   ConsentTemplate  @relation(fields: [tenantId, templateId], references: [tenantId, id], onDelete: Restrict)
+  consents   PatientConsent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, templateId, version])
+  @@index([tenantId])
 }

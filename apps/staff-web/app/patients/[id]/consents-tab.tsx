@@ -13,8 +13,8 @@ import {
   COMM_CHANNELS,
   COMM_PURPOSES,
   CONSENT_METHODS,
-  CONSENT_TYPES,
   type ConsentResponse,
+  RECORDABLE_CONSENT_TYPES,
   recordConsentRequest,
   setCommunicationPreferencesRequest,
 } from "@dentalos/validation";
@@ -193,7 +193,7 @@ function RecordDialog({
           value={v.type}
           onChange={(e) => setV({ ...v, type: e.target.value })}
         >
-          {CONSENT_TYPES.map((t) => (
+          {RECORDABLE_CONSENT_TYPES.map((t) => (
             <option key={t} value={t}>
               {humanize(t)}
             </option>

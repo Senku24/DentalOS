@@ -12,6 +12,7 @@ import {
   trimmed,
   uuid,
 } from "./common";
+import { clinicalSettings } from "./plans";
 
 // ---------------------------------------------------------------------------------------------
 // Tenant (organisation) settings & onboarding — PRD 4.1
@@ -31,6 +32,8 @@ export const tenantSettings = z.strictObject({
     .trim()
     .regex(/^[0-9]{2}[A-Z0-9]{13}$/)
     .optional(),
+  /** M2 clinical knobs (ADR 0003). */
+  clinical: clinicalSettings.optional(),
 });
 export type TenantSettings = z.infer<typeof tenantSettings>;
 
@@ -183,9 +186,18 @@ export const staffMemberResponse = z.object({
   roles: z.array(staffRole),
   orgWide: z.boolean(),
   branchScope: z.array(z.string()),
+  /** M2 carry-over (Membership.displayName / email). Optional until every API path returns them. */
+  displayName: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
   createdAt: isoDateTime,
 });
 export type StaffMemberResponse = z.infer<typeof staffMemberResponse>;
+
+/** PATCH /staff/:id/profile — display details only (access changes use updateMembershipRequest). */
+export const updateStaffProfileRequest = z.object({
+  displayName: z.string().trim().min(1).max(120).nullable().optional(),
+});
+export type UpdateStaffProfileRequest = z.infer<typeof updateStaffProfileRequest>;
 
 export const listStaffQuery = z.object({
   role: staffRole.optional(),

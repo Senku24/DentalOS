@@ -65,6 +65,24 @@ const table: [Principal["roles"][number], (typeof ALL_PERMISSIONS)[number], bool
   ["OWNER", "medical:read", true],
   ["OWNER", "medical:write", false],
   ["RECEPTIONIST", "patient:merge", false],
+  // M2 clinical operations (ADR 0003): dentist signs/amends; front desk books + checks in.
+  ["DENTIST", "clinical:amend", true],
+  ["DENTIST", "plan:approve", true],
+  ["DENTIST", "appointment:write", false],
+  ["DENTIST", "consent:template", false],
+  ["RECEPTIONIST", "appointment:checkin", true],
+  ["RECEPTIONIST", "schedule:manage", false],
+  ["RECEPTIONIST", "clinical:read", false],
+  ["RECEPTIONIST", "plan:read", true],
+  ["RECEPTIONIST", "plan:write", false],
+  ["MANAGER", "schedule:manage", true],
+  ["MANAGER", "clinical:amend", false],
+  ["MANAGER", "consent:template", false],
+  ["OWNER", "consent:template", true],
+  ["OWNER", "clinical:amend", false],
+  ["ACCOUNTANT", "plan:read", false],
+  ["ACCOUNTANT", "appointment:read", false],
+  ["ACCOUNTANT", "consent:manage", false],
 ];
 for (const [role, perm, want] of table)
   test(`${role} ${want ? "can" : "cannot"} ${perm}`, () => {
