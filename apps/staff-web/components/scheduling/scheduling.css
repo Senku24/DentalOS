@@ -1,0 +1,554 @@
+/* Front desk & calendar (U1). Built on the design tokens; class prefix `sch-`. */
+
+.sch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.sch-toolbar__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.sch-range {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  margin: 0 var(--space-2);
+  min-width: 12ch;
+}
+.sch-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+.sch-filters > .dos-field {
+  min-width: 160px;
+  flex: 1 1 160px;
+  max-width: 240px;
+}
+.sch-seg {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.sch-seg button {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 0;
+  border-inline-start: 1px solid var(--color-border);
+  font: inherit;
+  cursor: pointer;
+}
+.sch-seg button:first-child {
+  border-inline-start: 0;
+}
+.sch-seg button[aria-pressed="true"] {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-subtle-text);
+  font-weight: var(--weight-semibold);
+}
+.sch-seg button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  position: relative;
+}
+
+/* ---- Time grid (day / week) ---- */
+.sch-tg-scroll {
+  overflow: auto;
+  max-height: min(72vh, 900px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.sch-tg {
+  --slot-h: 22px;
+  --gutter: 64px;
+  display: grid;
+  grid-template-columns: var(--gutter) repeat(var(--cols), minmax(var(--col-min, 120px), 1fr));
+  grid-template-rows: auto repeat(var(--rows), var(--slot-h));
+  position: relative;
+  min-width: max-content;
+}
+.sch-tg [role="row"] {
+  display: contents;
+}
+.sch-tg__corner,
+.sch-tg__colhead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border-strong);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+}
+.sch-tg__corner {
+  left: 0;
+  z-index: 4;
+}
+.sch-tg__colhead {
+  text-align: center;
+  font-weight: var(--weight-semibold);
+  border-inline-start: 1px solid var(--color-border);
+}
+.sch-tg__colhead[data-today="true"] {
+  color: var(--color-primary);
+}
+.sch-tg__colhead small {
+  display: block;
+  font-weight: var(--weight-regular);
+  color: var(--color-text-muted);
+}
+.sch-tg__time {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: right;
+  padding: 0 var(--space-2);
+  transform: translateY(-0.6em);
+  border-inline-end: 1px solid var(--color-border);
+}
+.sch-tg__time[data-hour="false"] > span[aria-hidden] {
+  visibility: hidden;
+}
+.sch-cell {
+  border-inline-start: 1px solid var(--color-border);
+  border-top: 1px solid transparent;
+  background: var(--color-surface);
+  cursor: pointer;
+  min-width: 0;
+}
+.sch-cell[data-hour="true"] {
+  border-top-color: var(--color-border);
+}
+.sch-cell[data-closed="true"] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-surface-muted),
+    var(--color-surface-muted) 6px,
+    var(--color-bg) 6px,
+    var(--color-bg) 12px
+  );
+}
+.sch-cell:hover {
+  background: var(--color-primary-subtle);
+}
+.sch-cell:focus-visible,
+.sch-daycell:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.sch-cell[aria-readonly="true"] {
+  cursor: default;
+}
+.sch-now {
+  height: 0;
+  border-top: 2px solid var(--color-danger);
+  pointer-events: none;
+  z-index: 2;
+  align-self: start;
+}
+.sch-col-events {
+  display: grid;
+  grid-template-rows: repeat(var(--rows), var(--slot-h));
+  grid-template-columns: minmax(0, 1fr);
+  pointer-events: none;
+  z-index: 1;
+  padding: 0 3px 0 2px;
+}
+
+/* ---- Appointment chip ---- */
+.sch-evt {
+  pointer-events: auto;
+  justify-self: start;
+  margin-block: 1px;
+  overflow: hidden;
+  text-align: start;
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  border-inline-start: 4px solid var(--evt-accent, var(--color-text-muted));
+  background: var(--evt-bg, var(--color-surface-muted));
+  color: var(--color-text);
+  cursor: pointer;
+  min-height: 0;
+}
+.sch-evt:hover {
+  box-shadow: var(--shadow-sm);
+}
+.sch-evt:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  z-index: 5;
+}
+.sch-evt strong {
+  display: block;
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sch-evt span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+}
+.sch-evt[data-dim="true"] {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+[data-status="BOOKED"] {
+  --evt-accent: var(--color-text-muted);
+  --evt-bg: var(--color-surface);
+}
+[data-status="CONFIRMED"] {
+  --evt-accent: var(--color-info);
+  --evt-bg: var(--color-info-subtle);
+}
+[data-status="CHECKED_IN"] {
+  --evt-accent: var(--color-warning);
+  --evt-bg: var(--color-warning-subtle);
+}
+[data-status="IN_CHAIR"] {
+  --evt-accent: var(--color-primary);
+  --evt-bg: var(--color-primary-subtle);
+}
+[data-status="COMPLETED"] {
+  --evt-accent: var(--color-success);
+  --evt-bg: var(--color-success-subtle);
+}
+[data-status="CANCELLED"],
+[data-status="NO_SHOW"] {
+  --evt-accent: var(--color-danger);
+  --evt-bg: var(--color-danger-subtle);
+}
+[data-status="RESCHEDULED"] {
+  --evt-accent: var(--color-border-strong);
+  --evt-bg: var(--color-surface-muted);
+}
+[data-urgent="true"] {
+  --evt-accent: var(--color-danger);
+}
+
+/* ---- Month ---- */
+.sch-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.sch-month [role="row"] {
+  display: contents;
+}
+.sch-month__head {
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-align: center;
+  border-bottom: 1px solid var(--color-border-strong);
+}
+.sch-daycell {
+  min-height: 112px;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-top: 1px solid var(--color-border);
+  border-inline-start: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  cursor: pointer;
+}
+.sch-daycell:nth-child(7n + 1) {
+  border-inline-start: 0;
+}
+.sch-daycell[data-outside="true"] {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+.sch-daycell__num {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sch-daycell[data-today="true"] .sch-daycell__num > span:first-child {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-radius: var(--radius-full);
+  min-width: 1.8em;
+  text-align: center;
+}
+.sch-daycell .sch-evt {
+  width: 100%;
+  justify-self: stretch;
+}
+.sch-more {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ---- Agenda (phone) ---- */
+.sch-agenda {
+  display: grid;
+  gap: var(--space-4);
+}
+.sch-agenda h3 {
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-2);
+}
+.sch-agenda ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.sch-agenda .sch-evt {
+  width: 100%;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--target-min);
+}
+
+/* ---- Legend ---- */
+.sch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sch-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sch-legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border-inline-start: 4px solid var(--evt-accent);
+  background: var(--evt-bg);
+  display: inline-block;
+}
+
+/* ---- Patient picker ---- */
+.sch-picker__results {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  max-height: 240px;
+  overflow: auto;
+}
+.sch-picker__option + .sch-picker__option {
+  border-top: 1px solid var(--color-border);
+}
+.sch-picker__option {
+  display: block;
+  width: 100%;
+  text-align: start;
+  background: var(--color-surface);
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  cursor: pointer;
+  min-height: var(--target-min);
+}
+.sch-picker__option:hover,
+.sch-picker__option[aria-selected="true"] {
+  background: var(--color-primary-subtle);
+}
+.sch-picker__option small {
+  display: block;
+  color: var(--color-text-muted);
+}
+.sch-picked {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+.sch-picked small {
+  display: block;
+  color: var(--color-text-muted);
+}
+
+/* ---- Slot chips ---- */
+.sch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.sch-chip {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.sch-chip[aria-pressed="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+.sch-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- Front desk ---- */
+.sch-desk {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+.sch-lane {
+  display: grid;
+  gap: var(--space-3);
+}
+.sch-lane > ol,
+.sch-lane > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.sch-ticket {
+  border: 1px solid var(--color-border);
+  border-inline-start: 4px solid var(--evt-accent, var(--color-border-strong));
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  display: grid;
+  gap: var(--space-2);
+}
+.sch-ticket__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+.sch-ticket__pos {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  min-width: 2ch;
+}
+.sch-ticket__meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.sch-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.sch-live::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+}
+.sch-live[data-status="live"]::before {
+  background: var(--color-success);
+}
+.sch-live[data-status="polling"]::before {
+  background: var(--color-warning);
+}
+
+/* ---- Hours editor ---- */
+.sch-hours {
+  display: grid;
+  gap: var(--space-2);
+}
+.sch-hours__day {
+  display: grid;
+  grid-template-columns: 8ch minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}
+.sch-hours__sessions {
+  display: grid;
+  gap: var(--space-2);
+}
+.sch-hours__session {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+.sch-hours__session .dos-field {
+  width: 8.5rem;
+}
+
+@media (max-width: 1099px) {
+  .sch-desk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 639px) {
+  .sch-filters > .dos-field {
+    max-width: none;
+  }
+  .sch-range {
+    font-size: var(--text-md);
+    min-width: 0;
+  }
+  .sch-hours__day {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}
+
+.sch-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+/* Keep the DataTable's visually-hidden action labels inside its scroll box (else they widen the
+   page at 375px). Proposed upstream fix: position: relative on .dos-table-scroll in packages/ui. */
+.sch-table {
+  min-width: 0;
+}
+.sch-table .dos-table-scroll {
+  position: relative;
+}

@@ -54,6 +54,14 @@ resource "aws_cognito_user_pool" "staff" {
   }
 
   user_attribute_update_settings { attributes_require_verification_before_update = ["email"] }
+
+  # Puts the verified e-mail into ACCESS tokens (see pre_token.tf); V2 needs ESSENTIALS or PLUS.
+  lambda_config {
+    pre_token_generation_config {
+      lambda_arn     = aws_lambda_function.pre_token.arn
+      lambda_version = "V2_0"
+    }
+  }
 }
 
 resource "aws_cognito_user_pool_client" "staff" {

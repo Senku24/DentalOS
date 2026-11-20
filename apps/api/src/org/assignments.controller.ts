@@ -49,8 +49,14 @@ function assertNotPast(day: string, timeZone: string) {
   if (day < todayIn(timeZone)) throw new BadRequestException({ error: "effective_date_in_past" });
 }
 
+/**
+ * FOR SHARE on the membership row: DELETE /staff/:id holds FOR UPDATE on it while it clears roles and
+ * ends assignments, so an assignment can never be created from roles read before a concurrent removal.
+ */
 async function assertDentist(tx: Tx, tenantId: string, userId: string) {
-  const m = await tx.membership.findUnique({ where: { tenantId_userId: { tenantId, userId } } });
+  const [m] = await tx.$queryRaw<{ roles: string[] }[]>`
+    SELECT roles::text[] AS roles FROM "Membership"
+    WHERE "tenantId" = ${tenantId}::uuid AND "userId" = ${userId} FOR SHARE`;
   if (!m) return notFound();
   if (!m.roles.includes("DENTIST")) throw new BadRequestException({ error: "not_a_dentist" });
 }
