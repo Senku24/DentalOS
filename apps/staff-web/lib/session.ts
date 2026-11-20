@@ -28,12 +28,20 @@ export const DEV_BRANCHES = FIXTURE_BRANCHES.filter((b) => b.active).map((b) => 
   name: b.name,
 }));
 
+/**
+ * With a real API (NEXT_PUBLIC_API_URL set) the dev identity comes from .env: the seeded tenant, user
+ * and branch. Without it, the fixture ids keep mock mode consistent with the switcher.
+ */
+const devTenant = process.env.NEXT_PUBLIC_DEV_TENANT_ID || "00000000-0000-0000-0000-000000000001";
+const devUser = process.env.NEXT_PUBLIC_DEV_USER_ID || "dev-user";
+const devBranch = process.env.NEXT_PUBLIC_DEV_BRANCH_ID;
+
 export const DEV_PRINCIPAL: Principal = {
-  userId: "dev-user",
-  tenantId: "00000000-0000-0000-0000-000000000001",
+  userId: devUser,
+  tenantId: devTenant,
   roles: [role],
   orgWide: role === "OWNER" || role === "ACCOUNTANT",
-  branchScope: [DEV_BRANCHES[0]?.id ?? ""],
+  branchScope: [devBranch ?? DEV_BRANCHES[0]?.id ?? ""],
 };
 export const DEV_USER = {
   name: "Asha Verma",

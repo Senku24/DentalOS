@@ -5,6 +5,7 @@ import {
   type AppointmentResponse,
   type AppointmentStatus,
   type BranchResponse,
+  MAX_APPOINTMENT_LIST,
   type PatientResponse,
   type SchedulingEventData,
   type WorkingHoursResponse,
@@ -538,20 +539,20 @@ on("GET", "/availability", (_p, q) => {
 // Appointments
 on("GET", "/appointments", (_p, q) => {
   const f = parse(listAppointmentsQuery, q);
+  const rows = db.appointments
+    .filter(
+      (a) =>
+        (!f.branchId || a.branchId === f.branchId) &&
+        (!f.from || !f.to || (a.startsAt < f.to && a.endsAt > f.from)) &&
+        (!f.dentistUserId || a.dentistUserId === f.dentistUserId) &&
+        (!f.chairId || a.chairId === f.chairId) &&
+        (!f.status || f.status.includes(a.status)) &&
+        (!f.patientId || a.patientId === f.patientId),
+    )
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.id.localeCompare(b.id));
   return {
-    items: db.appointments
-      .filter(
-        (a) =>
-          (!f.branchId || a.branchId === f.branchId) &&
-          (!f.from || !f.to || (a.startsAt < f.to && a.endsAt > f.from)) &&
-          (!f.dentistUserId || a.dentistUserId === f.dentistUserId) &&
-          (!f.chairId || a.chairId === f.chairId) &&
-          (!f.status || f.status.includes(a.status)) &&
-          (!f.patientId || a.patientId === f.patientId),
-      )
-      .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.id.localeCompare(b.id))
-      .slice(0, 1000)
-      .map(withRescheduledTo),
+    items: rows.slice(0, MAX_APPOINTMENT_LIST).map(withRescheduledTo),
+    truncated: rows.length > MAX_APPOINTMENT_LIST,
   };
 });
 
@@ -880,9 +881,16 @@ on("GET", "/plans", (_p, q) => {
 });
 on("GET", "/plans/:id", ([id]) => db.plans.find((p) => p.id === id) ?? fail(404, "plan_not_found"));
 
-// Staff directory (org module). The shared M1 mock answers these without a permission check; the
-// real controllers need branch-scoped staff:read, which RECEPTIONIST and DENTIST do not have, so
-// enforce it here (the dentist pickers must cope with the 403: see scheduling-dentists.ts).
+// Dentists bookable at a branch (GET /scheduling/dentists, appointment:read). Answered by the shared
+// mock from its staff + assignment state; gated here with the scheduling principal too.
+on("GET", "/scheduling/dentists", (_p, q) => {
+  assertCan("appointment:read", q.branchId || undefined);
+  return sharedMockHandler("GET", `${API_PREFIX}/scheduling/dentists`, q, undefined);
+});
+
+// Staff directory (org module): branch-scoped staff:read, which RECEPTIONIST and DENTIST do not
+// have. The shared mock enforces it against the session; this gate uses the scheduling principal
+// (overridable in tests).
 on("GET", "/dentist-assignments", (_p, q) => {
   assertCan("staff:read", q.branchId || undefined);
   return sharedMockHandler("GET", `${API_PREFIX}/dentist-assignments`, q, undefined);

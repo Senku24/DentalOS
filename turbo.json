@@ -8,10 +8,6 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
-    "test": {
-      "dependsOn": ["^build"],
-      "env": ["S3_TEST_ENDPOINT"]
-    },
     "dev": {
       "cache": false,
       "persistent": true

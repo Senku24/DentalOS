@@ -260,6 +260,22 @@ export const updateChairRequest = z.object({
 });
 export type UpdateChairRequest = z.infer<typeof updateChairRequest>;
 
+// ---------------------------------------------------------------------------------------------
+// Dentists bookable at a branch (GET /scheduling/dentists — appointment:read, branch-scoped)
+// ---------------------------------------------------------------------------------------------
+
+export const listSchedulingDentistsQuery = z.object({ branchId: uuid });
+export type ListSchedulingDentistsQuery = z.infer<typeof listSchedulingDentistsQuery>;
+
+/** A current member with the DENTIST role and an assignment at the branch in force today or later. */
+export const schedulingDentistResponse = z.object({
+  userId: z.string(),
+  displayName: z.string().nullable(),
+});
+export type SchedulingDentistResponse = z.infer<typeof schedulingDentistResponse>;
+export const schedulingDentistsResponse = z.object({ items: z.array(schedulingDentistResponse) });
+export type SchedulingDentistsResponse = z.infer<typeof schedulingDentistsResponse>;
+
 export const listChairsQuery = z.object({
   branchId: uuid.optional(),
   active: z.stringbool().optional(),
@@ -545,6 +561,15 @@ export const appointmentDetailResponse = appointmentResponse.extend({
   events: z.array(appointmentEventResponse),
 });
 export type AppointmentDetailResponse = z.infer<typeof appointmentDetailResponse>;
+
+/** Hard cap of GET /appointments: `truncated` is true when more rows matched than were returned. */
+export const MAX_APPOINTMENT_LIST = 1000;
+/** GET /appointments. `truncated` was added in Wave 3 (optional for older servers / mocks). */
+export const appointmentListResponse = z.object({
+  items: z.array(appointmentResponse),
+  truncated: z.boolean().optional(),
+});
+export type AppointmentListResponse = z.infer<typeof appointmentListResponse>;
 
 // ---------------------------------------------------------------------------------------------
 // Check-in & waiting queue

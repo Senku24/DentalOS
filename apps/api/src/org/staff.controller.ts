@@ -30,17 +30,14 @@ import { EventBus } from "../realtime/event-bus";
 import { UUID, dateFromDay, dayFromDate, notFound, todayIn } from "./http";
 
 /**
- * Soft-removal marker (no schema change in M2): a removed member keeps its Membership row — so
+ * Soft removal (0007_m2_member_removal): a removed member keeps its Membership row — so
  * DentistBranchAssignment history (RESTRICT FK) and display name/e-mail for historical attribution
- * survive — but holds no roles and no scope, so every `@Can` check fails. Re-inviting restores it.
- *
- * KNOWN GAP until Wave 3: AuthGuard (src/auth/auth.guard.ts) only rejects a MISSING membership row,
- * so routes without `@Can` — GET /me and GET /events (SSE: tenant events without a branchId) — still
- * answer a removed member until their token expires. Fix (outside org/): treat `roles.length === 0`
- * as non-membership in the guard (see the X1 report); staff-removal.test.ts has the pending test.
- * Wave 3 proposal: a real `removedAt/removedBy` column.
+ * survive — with `removedAt`/`removedBy` set and no roles or scope (DB CHECK). AuthGuard refuses a
+ * removed member on every route, `@Can` or not. Re-inviting restores it (clears both columns).
+ * `roles.length === 0` is kept as a fallback for rows written before the column existed.
  */
-export const isRemoved = (m: Pick<Membership, "roles">) => m.roles.length === 0;
+export const isRemoved = (m: Pick<Membership, "roles" | "removedAt">) =>
+  m.removedAt !== null || m.roles.length === 0;
 
 const FALLBACK_TZ = "Asia/Kolkata";
 
@@ -65,6 +62,8 @@ const toMember = (m: Membership, p: Principal) => {
       scope === undefined ? m.branchScope : m.branchScope.filter((b) => scope.includes(b)),
     displayName: m.displayName,
     email: m.email,
+    removedAt: m.removedAt,
+    removedBy: m.removedBy,
     createdAt: m.createdAt,
   };
 };
@@ -157,12 +156,20 @@ export class StaffController {
     @CurrentPrincipal() p: Principal,
     @Query(new ZodPipe(listStaffQuery)) q: ListStaffQuery,
   ) {
+    // Removed members are not staff any more (GET /staff/:id still resolves them). Listing them is
+    // an administrative view: org-wide `staff:manage` only.
+    if (q.includeRemoved && !can(p, "staff:manage")) throw new ForbiddenException();
     const rows = await withTenant(this.prisma, p.tenantId, (tx) =>
       tx.membership.findMany({
         where: {
           tenantId: p.tenantId,
-          // Removed members (no roles) are not staff any more; GET /staff/:id still resolves them.
-          roles: q.role ? { has: q.role } : { isEmpty: false },
+          // `isEmpty: false` also hides rows removed before 0007 (no roles, no removedAt).
+          ...(q.role
+            ? { roles: { has: q.role } }
+            : q.includeRemoved
+              ? {}
+              : { roles: { isEmpty: false } }),
+          ...(q.includeRemoved ? {} : { removedAt: null }),
           AND: [
             visibleTo(p),
             q.branchId ? { OR: [{ orgWide: true }, { branchScope: { has: q.branchId } }] } : {},
@@ -261,11 +268,11 @@ export class StaffController {
   }
 
   /**
-   * Removes a member (soft, see `isRemoved`): roles and scope are cleared, so the user can no longer
-   * act in the tenant, while the row keeps history attributable (assignments, appointments,
+   * Removes a member (soft, see `isRemoved`): `removedAt`/`removedBy` are set and roles and scope
+   * cleared, so the user can no longer act in the tenant, while the row keeps history attributable (assignments, appointments,
    * encounters reference the user id). Open dentist assignments end at each branch's local today;
    * not-yet-started ones are cancelled. Same last-owner guard as PATCH. Answers the removed member
-   * (`roles: []`) plus the assignment ids that were ended / cancelled.
+   * (`roles: []`, `removedAt`, `removedBy`) plus the assignment ids that were ended / cancelled.
    */
   @Can("staff:manage")
   @Delete(":id")
@@ -276,9 +283,10 @@ export class StaffController {
       p.tenantId,
       async (tx) => {
         await lockOwners(tx, p.tenantId);
-        // Lock the target too: POST /dentist-assignments takes FOR SHARE on the same row
-        // (assignments.controller.ts assertDentist), so it cannot insert an open assignment from
-        // pre-removal roles that endAssignmentsOf below would miss.
+        // Lock the target too, before reading it: POST /dentist-assignments takes FOR SHARE on the
+        // same row (assignments.controller.ts assertDentist), so it cannot insert an open assignment
+        // from pre-removal roles that endAssignmentsOf below would miss — it waits, then sees the
+        // removal.
         await tx.$queryRaw`SELECT id FROM "Membership" WHERE "tenantId" = ${p.tenantId}::uuid AND id = ${id}::uuid FOR UPDATE`;
         const cur = await tx.membership.findFirst({ where: { tenantId: p.tenantId, id } });
         if (!cur) return notFound();
@@ -287,7 +295,13 @@ export class StaffController {
         const ended = await endAssignmentsOf(tx, p.tenantId, cur.userId);
         const m = await tx.membership.update({
           where: { id },
-          data: { roles: [], orgWide: false, branchScope: [] },
+          data: {
+            roles: [],
+            orgWide: false,
+            branchScope: [],
+            removedAt: new Date(),
+            removedBy: p.userId,
+          },
         });
         return { m, ...ended };
       },

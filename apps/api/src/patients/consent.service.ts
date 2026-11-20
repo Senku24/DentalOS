@@ -32,6 +32,7 @@ const toConsent = (c: PatientConsent): ConsentResponse & { branchId: string | nu
   capturedBy: c.capturedBy,
   grantedAt: c.grantedAt?.toISOString() ?? null,
   withdrawnAt: c.withdrawnAt?.toISOString() ?? null,
+  withdrawalReason: c.withdrawalReason,
   branchId: c.branchId,
 });
 

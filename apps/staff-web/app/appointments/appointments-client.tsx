@@ -344,7 +344,7 @@ export function AppointmentsClient() {
             </div>
           ) : (
             <div aria-busy={appts.loading} className="dos-stack" data-gap="sm">
-              {listTruncated(appts.data.items) ? (
+              {listTruncated(appts.data) ? (
                 <Alert tone="warning">
                   Too many appointments to show in one go: only the first {appts.data.items.length}{" "}
                   are listed, so later days may look emptier than they are. Switch to week or day

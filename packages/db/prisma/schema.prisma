@@ -301,6 +301,10 @@ model Membership {
   /// Display name / e-mail for staff lists (M2 carry-over). E-mail is lower-cased (DB CHECK).
   displayName        String?
   email              String?
+  /// Soft removal (0007): the row survives for attribution/history; roles and scope are cleared
+  /// (DB CHECK). A new invitation restores the member and clears both columns.
+  removedAt          DateTime?                 @db.Timestamptz(3)
+  removedBy          String?
   createdAt          DateTime                  @default(now())
   tenant             Tenant                    @relation(fields: [tenantId], references: [id])
   dentistAssignments DentistBranchAssignment[]

@@ -231,6 +231,8 @@ export class InvitationsController {
           orgWide: inv.orgWide,
           branchScope: inv.branchScope,
           email: claims.email.toLowerCase(),
+          removedAt: null,
+          removedBy: null,
         };
         const m = existing
           ? await tx.membership.update({ where: { id: existing.id }, data: access })

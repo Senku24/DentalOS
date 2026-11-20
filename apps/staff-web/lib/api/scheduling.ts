@@ -1,6 +1,7 @@
 import {
   type AppointmentDetailResponse,
   type AppointmentEventResponse,
+  type AppointmentListResponse,
   type AppointmentResponse,
   type AppointmentStatus,
   type AppointmentTransitionRequest,
@@ -12,6 +13,7 @@ import {
   type CreateWalkInRequest,
   type DentistAssignmentResponse,
   type RescheduleAppointmentRequest,
+  type SchedulingDentistsResponse,
   type SchedulingSettingsResponse,
   type SetWorkingHoursRequest,
   type StaffMemberResponse,
@@ -22,10 +24,11 @@ import {
   type UpdateSchedulingSettingsRequest,
   type WorkingHoursResponse,
   appointmentDetailResponse,
-  appointmentResponse,
+  appointmentListResponse,
   availabilityResponse,
   chairResponse,
   checkInQueueResponse,
+  schedulingDentistsResponse,
   schedulingSettingsResponse,
   workingHoursResponse,
   z,
@@ -39,12 +42,13 @@ import type { Items, Page } from "./types";
  * apps/api/src/scheduling/*.controller.ts — the source of truth:
  *   chairs.controller.ts         /chairs, /chairs/:id, /chairs/:id/{activate,deactivate}
  *   working-hours.controller.ts  /working-hours (GET, PUT), /scheduling/settings?branchId (GET, PATCH)
+ *   dentists.controller.ts       /scheduling/dentists?branchId (appointment:read)
  *   availability.controller.ts   /availability
  *   appointments.controller.ts   /appointments, /appointments/walk-in, /appointments/:id,
  *                                /appointments/:id/{events,status,cancel,reschedule}, /front-desk/queue
  *   realtime/events.controller   /events (SSE, Bearer/cookie auth → fetch-based reader)
  *   plans/plans.controller.ts    /plans, /plans/:id (read-only here: plan-item link when booking)
- * Kept in this module (not the shared routes.ts) until the Wave 3 merge; see the U1 report.
+ * Re-exported from the shared lib/api/routes.ts (`allRoutes`), the one route table.
  */
 
 const p = (path: string) => `${API_PREFIX}${path}`;
@@ -66,13 +70,15 @@ export const schedulingRoutes = {
   workingHours: () => p("/working-hours"),
   /** GET ?branchId → schedulingSettingsResponse, PATCH ?branchId updateSchedulingSettingsRequest */
   schedulingSettings: () => p("/scheduling/settings"),
+  /** GET ?branchId → schedulingDentistsResponse (appointment:read: usable by every scheduling role) */
+  schedulingDentists: () => p("/scheduling/dentists"),
 
   // ---- Availability ------------------------------------------------------------------------
   /** GET ?branchId&date&durationMin&dentistUserId&chairId&stepMin → availabilityResponse */
   availability: () => p("/availability"),
 
   // ---- Appointments ------------------------------------------------------------------------
-  /** GET listAppointmentsQuery → { items }, POST bookAppointmentRequest → appointmentResponse */
+  /** GET listAppointmentsQuery → { items, truncated }, POST bookAppointmentRequest → appointmentResponse */
   appointments: () => p("/appointments"),
   /** POST createWalkInRequest → appointmentResponse */
   appointmentWalkIn: () => p("/appointments/walk-in"),
@@ -100,7 +106,8 @@ export const schedulingRoutes = {
   /** GET → treatmentPlanResponse (with items) */
   plan: (planId: string) => p(`/plans/${id(planId)}`),
 
-  // ---- Staff directory (M1 org module; both need staff:read, which RECEPTIONIST/DENTIST lack) --
+  // ---- Staff directory (M1 org module; both need staff:read, which RECEPTIONIST/DENTIST lack;
+  // pickers use schedulingDentists instead) ----------------------------------------------------
   /** GET ?userId&branchId&status → { items: dentistAssignmentResponse[] } (org/assignments.controller.ts) */
   dentistAssignments: () => p("/dentist-assignments"),
   /** GET ?role&branchId → { items: staffMemberResponse[] } (org/staff.controller.ts) */
@@ -174,12 +181,20 @@ export function createSchedulingApi(c: ApiClient) {
       chairId?: string;
       stepMin?: number;
     }) => get<AvailabilityResponse>(r.availability(), q, availabilityResponse),
+    /** Current dentists at a branch (ids + display names) for pickers, filters and labels. */
+    dentists: (branchId: string) =>
+      get<SchedulingDentistsResponse>(
+        r.schedulingDentists(),
+        { branchId },
+        schedulingDentistsResponse,
+      ),
     appointments: {
+      /** `truncated`: the API cap was hit (later rows missing). */
       list: (q: AppointmentListQuery) =>
-        get<Items<AppointmentResponse>>(
+        get<AppointmentListResponse>(
           r.appointments(),
           { ...q, status: q.status?.length ? q.status.join(",") : undefined },
-          items(appointmentResponse),
+          appointmentListResponse,
         ),
       get: (appointmentId: string) =>
         get<AppointmentDetailResponse>(

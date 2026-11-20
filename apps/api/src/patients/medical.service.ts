@@ -42,6 +42,7 @@ const toAllergy = (a: PatientAllergy): AllergyResponse => ({
   notedBy: a.notedBy,
   notedAt: a.notedAt.toISOString(),
   resolvedAt: a.resolvedAt?.toISOString() ?? null,
+  resolutionReason: a.resolutionReason,
 });
 
 const toAlert = (a: PatientAlert): AlertResponse => ({
@@ -53,6 +54,7 @@ const toAlert = (a: PatientAlert): AlertResponse => ({
   createdBy: a.createdBy,
   createdAt: a.createdAt.toISOString(),
   resolvedAt: a.resolvedAt?.toISOString() ?? null,
+  resolutionReason: a.resolutionReason,
 });
 
 /**

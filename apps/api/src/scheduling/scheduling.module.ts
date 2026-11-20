@@ -3,6 +3,7 @@ import { AppointmentsController, FrontDeskController } from "./appointments.cont
 import { AppointmentsService } from "./appointments.service";
 import { AvailabilityController, AvailabilityService } from "./availability.controller";
 import { ChairsController, ChairsService } from "./chairs.controller";
+import { SchedulingDentistsController } from "./dentists.controller";
 import { WorkingHoursController, WorkingHoursService } from "./working-hours.controller";
 
 /**
@@ -19,6 +20,7 @@ import { WorkingHoursController, WorkingHoursService } from "./working-hours.con
     AvailabilityController,
     AppointmentsController,
     FrontDeskController,
+    SchedulingDentistsController,
   ],
   providers: [ChairsService, WorkingHoursService, AvailabilityService, AppointmentsService],
 })

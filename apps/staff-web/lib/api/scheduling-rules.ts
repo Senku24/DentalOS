@@ -4,6 +4,7 @@ import {
   APPOINTMENT_TRANSITION_PERMISSIONS,
   type AppointmentStatus,
   DEFAULT_NO_SHOW_GRACE_MINUTES,
+  MAX_APPOINTMENT_LIST,
   type TreatmentPlanStatus,
   allowedAppointmentTransitions,
   isNoShowEligible,
@@ -173,8 +174,8 @@ export function manageActions(a: AppointmentLike, can: CanFn): ManageActions {
 // Calendar list window
 // ---------------------------------------------------------------------------------------------
 
-/** GET /appointments silently stops at this many rows (appointments.service.ts MAX_LIST), no cursor. */
-export const APPOINTMENT_LIST_CAP = 1000;
+/** GET /appointments stops at this many rows (no cursor) and then answers `truncated: true`. */
+export const APPOINTMENT_LIST_CAP = MAX_APPOINTMENT_LIST;
 
 /**
  * Statuses the calendar asks for, so closed rows the grid would hide don't use up the 1000-row cap:
@@ -189,8 +190,12 @@ export function calendarStatuses(showClosed: boolean): AppointmentStatus[] {
   return showClosed ? [...base, "CANCELLED", "NO_SHOW"] : base;
 }
 
-/** True when a list may have been cut at the API cap (later rows missing). */
-export const listTruncated = (items: readonly unknown[]) => items.length >= APPOINTMENT_LIST_CAP;
+/**
+ * True when GET /appointments cut the list at its cap (later rows missing). Uses the server's
+ * `truncated` flag; a response without it (older server) is judged by its length.
+ */
+export const listTruncated = (r: { items: readonly unknown[]; truncated?: boolean }) =>
+  r.truncated ?? r.items.length >= APPOINTMENT_LIST_CAP;
 
 // ---------------------------------------------------------------------------------------------
 // Plan-item link

@@ -46,6 +46,8 @@ const toDocument = (d: PatientDocument) => ({
   status: d.status,
   uploadedBy: d.uploadedBy,
   createdAt: d.createdAt,
+  encounterId: d.encounterId ?? null,
+  deletedReason: d.deletedReason ?? null,
 });
 
 /** Patients are tenant-shared; checked directly by (tenantId, id). Merged tombstones take no new files. */

@@ -57,4 +57,7 @@ export const toOverride = (o: BranchPriceOverride) => ({
   setBy: o.setBy,
   effectiveFrom: o.effectiveFrom,
   effectiveTo: o.effectiveTo,
+  /** Why / by whom the override was closed (superseded or cleared); null while in force. */
+  endedReason: o.endedReason,
+  endedBy: o.endedBy,
 });

@@ -12,6 +12,7 @@ import {
   APPOINTMENT_REASON_REQUIRED,
   APPOINTMENT_TRANSITION_PERMISSIONS,
   type AppointmentDetailResponse,
+  type AppointmentListResponse,
   type AppointmentTransitionRequest,
   type BookAppointmentRequest,
   type CancelAppointmentRequest,
@@ -19,6 +20,7 @@ import {
   type CheckInQueueResponse,
   type CreateWalkInRequest,
   type ListAppointmentsQuery,
+  MAX_APPOINTMENT_LIST,
   type RescheduleAppointmentRequest,
   type SchedulingSettings,
   type UpdateAppointmentRequest,
@@ -66,7 +68,7 @@ import {
 } from "./scheduling-common";
 
 const ACTIVE = ACTIVE_APPOINTMENT_STATUSES as readonly AppointmentStatus[];
-const MAX_LIST = 1000;
+const MAX_LIST = MAX_APPOINTMENT_LIST;
 
 /**
  * A walk-in is a patient at the desk: it starts within this many minutes of now (either side). Later
@@ -146,7 +148,7 @@ export class AppointmentsService {
   // Reads
   // -------------------------------------------------------------------------------------------
 
-  async list(p: Principal, q: ListAppointmentsQuery) {
+  async list(p: Principal, q: ListAppointmentsQuery): Promise<AppointmentListResponse> {
     if (q.branchId) assertCan(p, "appointment:read", { branchId: q.branchId });
     const rows = await withTenant(this.prisma, p.tenantId, async (tx) => {
       const and: Prisma.AppointmentWhereInput[] = [branchWhere(p)];
@@ -162,10 +164,12 @@ export class AppointmentsService {
         where: { AND: and },
         include: APPOINTMENT_INCLUDE,
         orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-        take: MAX_LIST,
+        // One extra row tells a full page from a truncated one.
+        take: MAX_LIST + 1,
       });
     });
-    return { items: rows.map(toAppointment) };
+    const truncated = rows.length > MAX_LIST;
+    return { items: rows.slice(0, MAX_LIST).map(toAppointment), truncated };
   }
 
   async get(p: Principal, id: string): Promise<AppointmentDetailResponse> {

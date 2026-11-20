@@ -71,9 +71,10 @@ export type SchedulingBranch = ReturnType<typeof useSchedulingBranch>;
 export type { DentistOption } from "../../lib/api/scheduling-dentists";
 
 /**
- * Dentists at the branch for pickers, filters and labels. Falls back to dentists with working
- * hours here when the role can't read assignments (`limited`); `known` adds ids already on
- * screen (e.g. the loaded appointments) so their labels and filter entries still exist.
+ * Dentists at the branch for pickers, filters and labels, from GET /scheduling/dentists
+ * (appointment:read). Falls back to dentists with working hours here if that call fails
+ * (`limited`); `known` adds ids already on screen (e.g. the loaded appointments) so their labels
+ * and filter entries still exist.
  */
 export function useDentists(branchId: string, known: readonly (string | null | undefined)[] = []) {
   const q = useQuery(
@@ -93,7 +94,7 @@ export function useDentists(branchId: string, known: readonly (string | null | u
 
 /** Hint for a dentist picker when the list came from the working-hours fallback. */
 export const LIMITED_DENTISTS_HINT =
-  "Shows dentists with working hours here (your role can't read the full staff list).";
+  "Shows dentists with working hours here (the dentist list could not be loaded).";
 
 /**
  * The overlays here are mounted conditionally with `open` and no Radix Dialog.Trigger, so Radix

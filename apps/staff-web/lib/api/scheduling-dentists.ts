@@ -3,13 +3,12 @@ import type { SchedulingApi } from "./scheduling";
 /**
  * Dentists a scheduling screen can offer at one branch.
  *
- * The authoritative list is GET /dentist-assignments?branchId&status=current, but that endpoint needs
- * branch-scoped `staff:read`, which RECEPTIONIST and DENTIST (the main front-desk users) do not
- * have, so for them it answers 403. Instead of an empty picker we then fall back to the dentists
- * with DENTIST working-hours rows in force at the branch (GET /working-hours needs only
- * `appointment:read`), and callers may add ids they already know (e.g. from loaded appointments).
- * Names come from GET /staff (same staff:read gate) when readable, else the session directory.
- * See "Flags for Commander": a dentist list readable with appointment:read is the real fix.
+ * The list is GET /scheduling/dentists?branchId (Wave 3): current, non-removed members with the
+ * DENTIST role and an assignment at the branch in force today or later, with display names. It
+ * needs only branch-scoped `appointment:read`, so RECEPTIONIST and DENTIST (no `staff:read`) get
+ * the full list too. Should that call fail (e.g. an older API without the route), we fall back to
+ * the dentists with DENTIST working-hours rows at the branch (GET /working-hours, same permission),
+ * and callers may add ids they already know (e.g. from loaded appointments).
  */
 
 export interface DentistOption {
@@ -17,15 +16,15 @@ export interface DentistOption {
   label: string;
 }
 
-/** `assignments`: the full current list. `working-hours`: fallback, may miss dentists. */
-export type DentistSource = "assignments" | "working-hours";
+/** `dentists`: the full current list. `working-hours`: fallback, may miss dentists. */
+export type DentistSource = "dentists" | "working-hours";
 
 export interface BranchDentists {
   dentists: DentistOption[];
   source: DentistSource;
 }
 
-type Deps = Pick<SchedulingApi, "directory" | "hours">;
+type Deps = Pick<SchedulingApi, "dentists" | "hours">;
 
 const byLabel = (a: DentistOption, b: DentistOption) => a.label.localeCompare(b.label);
 
@@ -34,29 +33,26 @@ export async function loadBranchDentists(
   branchId: string,
   fallbackLabel: (userId: string) => string,
 ): Promise<BranchDentists> {
-  const names = sapi.directory.staff({ role: "DENTIST" }).then(
-    (r) => new Map(r.items.map((s) => [s.userId, s.displayName ?? null] as const)),
-    () => new Map<string, string | null>(),
-  );
-  let ids: string[];
-  let source: DentistSource = "assignments";
   try {
-    const a = await sapi.directory.dentistAssignments({ branchId, status: "current" });
-    ids = a.items.map((x) => x.userId);
+    const r = await sapi.dentists(branchId);
+    return {
+      source: "dentists",
+      dentists: r.items
+        .map((d) => ({ userId: d.userId, label: d.displayName || fallbackLabel(d.userId) }))
+        .sort(byLabel),
+    };
   } catch {
-    source = "working-hours";
     const rows = await sapi.hours
       .list({ branchId, scope: "DENTIST" })
       .catch(() => ({ items: [] as { userId: string | null }[] }));
-    ids = rows.items.map((w) => w.userId).filter((u): u is string => Boolean(u));
+    const ids = rows.items.map((w) => w.userId).filter((u): u is string => Boolean(u));
+    return {
+      source: "working-hours",
+      dentists: [...new Set(ids)]
+        .map((userId) => ({ userId, label: fallbackLabel(userId) }))
+        .sort(byLabel),
+    };
   }
-  const labels = await names;
-  return {
-    source,
-    dentists: [...new Set(ids)]
-      .map((userId) => ({ userId, label: labels.get(userId) || fallbackLabel(userId) }))
-      .sort(byLabel),
-  };
 }
 
 /** Adds dentists only known from elsewhere (appointments on screen) to a loaded list. */

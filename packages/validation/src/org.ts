@@ -189,6 +189,9 @@ export const staffMemberResponse = z.object({
   /** M2 carry-over (Membership.displayName / email). Optional until every API path returns them. */
   displayName: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
+  /** Set when the member was removed (DELETE /staff/:id); only listed with `includeRemoved=true`. */
+  removedAt: isoDateTime.nullable().optional(),
+  removedBy: z.string().nullable().optional(),
   createdAt: isoDateTime,
 });
 export type StaffMemberResponse = z.infer<typeof staffMemberResponse>;
@@ -202,6 +205,8 @@ export type UpdateStaffProfileRequest = z.infer<typeof updateStaffProfileRequest
 export const listStaffQuery = z.object({
   role: staffRole.optional(),
   branchId: uuid.optional(),
+  /** Include removed members (org-wide `staff:manage` only; 403 otherwise). */
+  includeRemoved: z.stringbool().default(false),
 });
 export type ListStaffQuery = z.infer<typeof listStaffQuery>;
 
