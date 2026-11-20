@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { branchBillingSettings } from "./billing";
 import {
   dateOnly,
   isoDateTime,
@@ -128,7 +129,11 @@ export const schedulingSettings = z.strictObject({
 export type SchedulingSettings = z.infer<typeof schedulingSettings>;
 
 /** Branch.settings JSON. Unknown keys rejected so typos never silently become no-ops. */
-export const branchSettings = z.strictObject({ scheduling: schedulingSettings.optional() });
+export const branchSettings = z.strictObject({
+  scheduling: schedulingSettings.optional(),
+  /** M3 per-branch billing overrides (GSTIN, state code, discount limits …) — ADR 0004 §10. */
+  billing: branchBillingSettings.optional(),
+});
 export type BranchSettings = z.infer<typeof branchSettings>;
 
 /** PATCH: no defaults (absent keys keep the stored value). */

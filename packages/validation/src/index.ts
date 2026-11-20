@@ -10,3 +10,8 @@ export * from "./fdi";
 export * from "./scheduling";
 export * from "./clinical";
 export * from "./plans";
+// M3 business operations
+export * from "./billing";
+export * from "./commissions";
+export * from "./inventory";
+export * from "./notifications";

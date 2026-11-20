@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { tenantBillingSettings } from "./billing";
 import {
   address,
   countryCode,
@@ -12,6 +13,7 @@ import {
   trimmed,
   uuid,
 } from "./common";
+import { notificationSettings } from "./notifications";
 import { clinicalSettings } from "./plans";
 
 // ---------------------------------------------------------------------------------------------
@@ -34,6 +36,10 @@ export const tenantSettings = z.strictObject({
     .optional(),
   /** M2 clinical knobs (ADR 0003). */
   clinical: clinicalSettings.optional(),
+  /** M3 billing knobs (ADR 0004 §10): GST mode, discount limits, refund threshold … */
+  billing: tenantBillingSettings.optional(),
+  /** M3 notification knobs (ADR 0004 §10): channels, reminder offsets, quiet hours, implicit consent. */
+  notifications: notificationSettings.optional(),
 });
 export type TenantSettings = z.infer<typeof tenantSettings>;
 

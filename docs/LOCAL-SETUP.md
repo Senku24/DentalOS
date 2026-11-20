@@ -40,6 +40,18 @@ bun run format             # auto-format the repo
 ```
 Production-style run of staff-web: `bun run --cwd apps/staff-web start` (after `bun run build`).
 
+## 5. Background jobs (pg-boss)
+The API enqueues jobs (receipts, reminders, ...) and the worker runs them. pg-boss keeps its queues in a `pgboss` schema that the
+app role (`dentalos_app`) cannot create. `bun run dev:worker` therefore connects as the schema owner (`PGBOSS_DATABASE_URL`, falling back
+to `ADMIN_DATABASE_URL`, which is already in your `.env`), installs / migrates `pgboss`, creates its queues and **grants `dentalos_app`
+access to `pgboss.*`** (idempotent, repeated at every start; set `PGBOSS_APP_ROLE` if your app role has another name). The API's
+`JobQueueService` then enqueues as `dentalos_app`.
+- Start the worker at least once before the API enqueues (it creates the queues): `permission denied for schema pgboss` or
+  `Queue ... not found` from the API means the worker has not run yet against this database.
+- The worker only starts pg-boss once a handler is registered (`apps/worker/src/handlers/index.ts`).
+- Webhook signing secrets (payment gateway, delivery receipts) come from `WEBHOOK_SECRET_<GATEWAY>[_<TENANT>]` in `.env`
+  (see `.env.example`); without one the webhook routes answer 401.
+
 ## Troubleshooting
 - "Application error: a client-side exception" / ChunkLoadError → a stale server holds the port or `.next` is out of date: `kill $(lsof -ti :3000)`, `rm -rf apps/staff-web/.next`, then `bun run dev:web`.
 - Never run `bun run build` while `dev:web` is running (they share `apps/staff-web/.next`).

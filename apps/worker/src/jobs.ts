@@ -27,13 +27,57 @@ export interface JobQueueOptions {
   retryDelaySeconds?: number;
 }
 
-export async function startBoss(connectionString: string): Promise<PgBoss> {
+/**
+ * Starts pg-boss. `connectionString` must be a role that may create / migrate the `pgboss` schema (the owner:
+ * `PGBOSS_DATABASE_URL`, else `ADMIN_DATABASE_URL`). The tenant-scoped app role (`dentalos_app`, used by the API to
+ * enqueue and by handlers through Prisma) has no rights on that schema, so after start-up the owner grants it
+ * USAGE + DML (idempotent; also set as default privileges so queues created later are covered). Without this
+ * the API's JobQueueService fails with "permission denied for schema pgboss".
+ */
+export async function startBoss(
+  connectionString: string,
+  opts: { appRole?: string | null } = {},
+): Promise<PgBoss> {
   const boss = new PgBoss(connectionString);
   boss.on("error", (err) =>
     console.error(JSON.stringify({ level: "error", msg: "pgboss", err: String(err) })),
   );
   await boss.start();
+  const role = opts.appRole === undefined ? "dentalos_app" : opts.appRole;
+  if (role) await grantAppRole(boss, role);
   return boss;
+}
+
+/** GRANT the app role access to the pgboss schema. Non-fatal: privileges may instead be managed by the DBA. */
+export async function grantAppRole(boss: PgBoss, role: string): Promise<boolean> {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(role)) throw new Error(`invalid role name: ${role}`);
+  const r = `"${role}"`;
+  const db = boss.getDb();
+  try {
+    for (const sql of [
+      `GRANT USAGE ON SCHEMA pgboss TO ${r}`,
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgboss TO ${r}`,
+      `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA pgboss TO ${r}`,
+      `GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pgboss TO ${r}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${r}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT USAGE, SELECT ON SEQUENCES TO ${r}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT EXECUTE ON FUNCTIONS TO ${r}`,
+    ]) {
+      await db.executeSql(sql);
+    }
+    return true;
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        service: "worker",
+        msg: "could not grant pgboss access to the app role (run the worker with PGBOSS_DATABASE_URL / ADMIN_DATABASE_URL)",
+        role,
+        err: String(err),
+      }),
+    );
+    return false;
+  }
 }
 
 /**
