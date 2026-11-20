@@ -23,7 +23,7 @@ export function useForm<S extends z.ZodType, V extends Record<string, unknown>>(
   const set = useCallback(<K extends keyof V>(key: K, value: V[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
     setErrors((e) => {
-      if (!(key as string in e)) return e;
+      if (!((key as string) in e)) return e;
       const { [key as string]: _, ...rest } = e;
       return rest;
     });

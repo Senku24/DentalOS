@@ -1,5 +1,4 @@
 "use client";
-import { INTAKE_TYPES, PATIENT_LIFECYCLE_STAGES, type PatientSummary } from "@dentalos/validation";
 import {
   Badge,
   Button,
@@ -12,6 +11,7 @@ import {
   SelectField,
   useLink,
 } from "@dentalos/ui";
+import { INTAKE_TYPES, PATIENT_LIFECYCLE_STAGES, type PatientSummary } from "@dentalos/validation";
 import { CopyCheck, Search, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -93,7 +93,12 @@ function Inner() {
         return `${a === null ? "—" : `${a} y`} · ${humanize(row.original.sex)}`;
       },
     },
-    { accessorKey: "phone", header: "Phone", enableSorting: false, cell: ({ getValue }) => formatPhone(getValue() as string | null) },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+      enableSorting: false,
+      cell: ({ getValue }) => formatPhone(getValue() as string | null),
+    },
     { id: "branch", header: "Registered at", accessorFn: (p) => branchName(p.originBranchId) },
     {
       accessorKey: "lifecycleStage",
@@ -160,7 +165,11 @@ function Inner() {
               </option>
             ))}
           </SelectField>
-          <SelectField label="Registered at" value={branch} onChange={(e) => setBranch(e.target.value)}>
+          <SelectField
+            label="Registered at"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+          >
             <option value="">All branches</option>
             <BranchOptions branches={branches} includeInactive />
           </SelectField>
@@ -196,7 +205,9 @@ function Inner() {
             pageSize={100}
             emptyTitle={dq || stage || intake || branch ? "No patients match" : "No patients yet"}
             emptyDescription={
-              dq ? "Check the spelling or search by phone number instead." : "Register a patient to get started."
+              dq
+                ? "Check the spelling or search by phone number instead."
+                : "Register a patient to get started."
             }
           />
           <CursorPager

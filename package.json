@@ -5,14 +5,19 @@
   "packageManager": "bun@1.3.13",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/staff-web dev",
+    "dev:worker": "bun run --cwd apps/worker dev",
     "build": "turbo run build",
-    "dev": "turbo run dev",
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
     "db:up": "docker compose -f infra/docker-compose.yml up -d",
-    "db:down": "docker compose -f infra/docker-compose.yml down"
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:generate": "bun run --cwd packages/db generate",
+    "db:migrate": "bun --env-file=.env scripts/db-migrate.ts",
+    "db:seed": "bun --env-file=.env apps/api/scripts/seed-dev.ts",
+    "openapi": "bun run --cwd apps/api openapi"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -11,7 +11,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } fr
 import { AuditService } from "../audit/audit.service";
 import { Can, PRISMA } from "../auth/auth.guard";
 import type { Principal } from "../auth/roles";
-import { CurrentPrincipal, branchWhere } from "../common/principal";
+import { CurrentPrincipal, withBranchScope } from "../common/principal";
 import { ZodPipe } from "../common/zod.pipe";
 import { EventBus } from "../realtime/event-bus";
 import { UUID, mapDbError, notFound } from "./http";
@@ -55,7 +55,7 @@ export class BranchesController {
   ) {
     const rows = await withTenant(this.prisma, p.tenantId, (tx) =>
       tx.branch.findMany({
-        where: { tenantId: p.tenantId, active: q.active, ...branchWhere(p, "id") },
+        where: withBranchScope(p, { tenantId: p.tenantId, active: q.active }, "id"),
         orderBy: [{ name: "asc" }, { id: "asc" }],
       }),
     );
@@ -67,7 +67,7 @@ export class BranchesController {
   async get(@CurrentPrincipal() p: Principal, @Param("id", UUID) id: string) {
     const b = await withTenant(this.prisma, p.tenantId, (tx) =>
       // AND, not spread: branchWhere(p, "id") would overwrite the `id` key.
-      tx.branch.findFirst({ where: { tenantId: p.tenantId, id, AND: [branchWhere(p, "id")] } }),
+      tx.branch.findFirst({ where: withBranchScope(p, { tenantId: p.tenantId, id }, "id") }),
     );
     return b ? toBranch(b) : notFound();
   }

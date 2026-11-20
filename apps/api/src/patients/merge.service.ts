@@ -37,6 +37,14 @@ const NAME_OR_CONTACT: readonly MergeableField[] = [
 ];
 
 /**
+ * Filters for the re-pointable rows. Plans, encounters and other clinical rows are never re-pointed
+ * (ADR 0003 §2.1); rows patient-bound to them by composite FK (plan-version consents,
+ * encounter-attached documents) stay on the merged id too and are read through the lineage.
+ */
+const MOVABLE_CONSENT = { planVersionId: null };
+const MOVABLE_DOCUMENT = { encounterId: null };
+
+/**
  * Controlled merge (PRD 4.2: never automatic, authorised, auditable). Requires patient:merge.
  * Approval: the schema's `approvedBy` is optional, so M1 records the performer only (single-step,
  * permission-gated, step-up re-auth, audited). A four-eyes request/approve flow can fill approvedBy later.
@@ -55,9 +63,9 @@ export class MergeService {
       await Promise.all([
         tx.patientAllergy.count({ where }),
         tx.patientAlert.count({ where }),
-        tx.patientConsent.count({ where }),
+        tx.patientConsent.count({ where: { ...where, ...MOVABLE_CONSENT } }),
         tx.communicationPreference.count({ where }),
-        tx.patientDocument.count({ where }),
+        tx.patientDocument.count({ where: { ...where, ...MOVABLE_DOCUMENT } }),
         tx.patientMedicalHistory.count({ where }),
       ]);
     const enquiries = await tx.patientEnquiry.count({ where: { convertedPatientId: mergedId } });
@@ -156,8 +164,15 @@ export class MergeService {
         const moved = {
           allergies: await ids(tx.patientAllergy.findMany(sel)),
           alerts: await ids(tx.patientAlert.findMany(sel)),
-          consents: await ids(tx.patientConsent.findMany(sel)),
-          documents: await ids(tx.patientDocument.findMany(sel)),
+          consents: await ids(
+            tx.patientConsent.findMany({ ...sel, where: { ...sel.where, ...MOVABLE_CONSENT } }),
+          ),
+          documents: await ids(
+            tx.patientDocument.findMany({
+              ...sel,
+              where: { ...sel.where, ...MOVABLE_DOCUMENT },
+            }),
+          ),
           enquiries: await ids(
             tx.patientEnquiry.findMany({
               select: { id: true },
@@ -173,8 +188,16 @@ export class MergeService {
         const to = { patientId: survivor.id };
         await tx.patientAllergy.updateMany({ where: { patientId: merged.id }, data: to });
         await tx.patientAlert.updateMany({ where: { patientId: merged.id }, data: to });
-        await tx.patientConsent.updateMany({ where: { patientId: merged.id }, data: to });
-        await tx.patientDocument.updateMany({ where: { patientId: merged.id }, data: to });
+        // Consents bound to a plan version and documents attached to an encounter are patient-bound
+        // by composite FKs to clinical rows that stay on the merged id: they stay with them.
+        await tx.patientConsent.updateMany({
+          where: { patientId: merged.id, ...MOVABLE_CONSENT },
+          data: to,
+        });
+        await tx.patientDocument.updateMany({
+          where: { patientId: merged.id, ...MOVABLE_DOCUMENT },
+          data: to,
+        });
         await tx.patientEnquiry.updateMany({
           where: { convertedPatientId: merged.id },
           data: { convertedPatientId: survivor.id },

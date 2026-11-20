@@ -65,7 +65,11 @@ export function useMutation<A extends unknown[], R>(
       try {
         const r = await fn(...args);
         const o = optsRef.current;
-        if (o.success) toast({ tone: "success", title: typeof o.success === "string" ? o.success : o.success(r) });
+        if (o.success)
+          toast({
+            tone: "success",
+            title: typeof o.success === "string" ? o.success : o.success(r),
+          });
         o.onSuccess?.(r);
         return r;
       } catch (e) {

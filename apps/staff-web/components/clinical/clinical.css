@@ -1,0 +1,252 @@
+/* Clinical workspace layout (PRD 3.4). Tokens only; components come from @dentalos/ui. */
+
+/*
+ * The identity/allergy banner is sticky only where there is room for it (WCAG 1.4.10 Reflow and
+ * 2.4.11 Focus Not Obscured): on narrow or short viewports (phones, 400% zoom) it scrolls away with
+ * the page. When stuck it is capped in height (scrolls internally) and the page reserves its height
+ * as scroll padding (--cw-banner-h, measured by PatientBanner) so focused controls stay visible.
+ */
+.cw-banner {
+  position: static;
+  z-index: 5;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: 0 2px 6px rgba(38, 39, 42, 0.06);
+  display: grid;
+  gap: var(--space-2);
+}
+.cw-banner__name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin: 0;
+}
+.cw-banner__meta {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.cw-banner__alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cw-layout {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: start;
+}
+.cw-aside {
+  display: grid;
+  gap: var(--space-4);
+}
+@media (max-width: 1099px) {
+  .cw-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cw-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.cw-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.cw-item[data-tone="amend"] {
+  border-left: 3px solid var(--color-info);
+}
+.cw-item[data-current="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+.cw-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+.cw-meta {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.cw-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.cw-kv {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.cw-kv dt {
+  color: var(--color-text-muted);
+}
+.cw-kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cw-chart-host {
+  container-type: inline-size;
+  min-width: 0;
+}
+.cw-chart {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+/* Side-by-side only when the chart itself still gets its full grid (> 520px). */
+@container (min-width: 960px) {
+  .cw-chart {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  }
+}
+.cw-chart__side {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+}
+
+.cw-surfaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.cw-surfaces legend {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  padding: 0;
+}
+
+.cw-phase {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+.cw-phase:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.cw-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+}
+.cw-totals b {
+  font-variant-numeric: tabular-nums;
+}
+.cw-money {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+/* position: relative keeps absolutely positioned sr-only text inside the scroller, otherwise it
+   escapes the overflow clip and widens the page on phones (horizontal page scroll). */
+.cw-table-wrap {
+  position: relative;
+  overflow-x: auto;
+}
+.cw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.cw-table th,
+.cw-table td {
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+.cw-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--text-xs);
+}
+.cw-table tfoot td {
+  font-weight: 600;
+  border-bottom: 0;
+}
+
+.cw-diff[data-kind="added"] {
+  border-left: 3px solid var(--color-success);
+}
+.cw-diff[data-kind="removed"] {
+  border-left: 3px solid var(--color-danger);
+}
+.cw-diff[data-kind="changed"] {
+  border-left: 3px solid var(--color-warning);
+}
+.cw-diff del {
+  color: var(--color-danger);
+}
+.cw-diff ins {
+  color: var(--color-success);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.cw-consent-text {
+  max-height: 14rem;
+  overflow: auto;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+/* Grid stacks size to their widest child by default; let wide content (tab lists, tables) scroll
+   inside its own box instead of widening the page on phones. */
+.cw,
+.cw > *,
+.cw .dos-stack > *,
+.cw-layout > *,
+.cw-item > * {
+  min-width: 0;
+}
+
+/* Long allergy/alert labels wrap instead of forcing the banner wider than a phone. */
+.cw-banner__alerts .dos-badge,
+.cw-list .dos-badge {
+  white-space: normal;
+  text-align: left;
+}
+
+@media (min-width: 641px) and (min-height: 601px) {
+  .cw-banner {
+    position: sticky;
+    top: var(--topbar-height);
+    max-height: 35vh;
+    overflow-y: auto;
+  }
+  :root:has(.cw-banner) {
+    scroll-padding-top: calc(var(--topbar-height) + var(--cw-banner-h, 0px) + var(--space-2));
+  }
+}

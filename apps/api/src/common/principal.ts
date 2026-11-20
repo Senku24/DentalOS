@@ -43,10 +43,32 @@ export function assertCan(p: Principal, perm: Permission, resource: Resource = {
 
 /**
  * Prisma `where` fragment restricting a branch-owned table to the caller's scope.
- *   tx.patientDocument.findMany({ where: { patientId, ...branchWhere(p) } })
  * Returns `{}` for orgWide principals; `{ branchId: { in: [] } }` (no rows) for an empty scope.
+ *
+ * PITFALL — never spread it into a `where` that already has the same key: the spread silently
+ * OVERWRITES that key and widens the query to the whole scope.
+ *   BAD:  { id, ...branchWhere(p, "id") }          // `id` filter lost -> any in-scope branch
+ *   BAD:  { branchId: q.branchId, ...branchWhere(p) }
+ *   GOOD: { id, AND: [branchWhere(p, "id")] }      // or withBranchScope(p, { id }, "id")
+ * Spreading is only safe when the where has no `field` key at all; prefer `AND: [...]` / the helper.
  */
 export function branchWhere(p: Principal, field = "branchId"): Record<string, { in: string[] }> {
   const ids = branchFilter(p);
   return ids === undefined ? {} : { [field]: { in: ids } };
+}
+
+/**
+ * Safe merge of a `where` with the caller's branch scope (always ANDed, never overwrites keys;
+ * an existing `AND` is preserved).
+ *   tx.branch.findFirst({ where: withBranchScope(p, { tenantId, id }, "id") })
+ */
+export function withBranchScope<W extends object>(
+  p: Principal,
+  where: W,
+  field = "branchId",
+): W & { AND: W[] } {
+  const scope = branchWhere(p, field) as W;
+  const and = (where as { AND?: W | W[] }).AND;
+  const prior = and === undefined ? [] : Array.isArray(and) ? and : [and];
+  return { ...where, AND: [...prior, scope] };
 }

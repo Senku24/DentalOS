@@ -288,7 +288,11 @@ export class ServicesController {
             throw new ConflictException({ error: "overlaps_scheduled_override" });
           closed = await tx.branchPriceOverride.update({
             where: { id: open.id },
-            data: { effectiveTo: from },
+            data: {
+              effectiveTo: from,
+              endedBy: p.userId,
+              endedReason: `superseded: ${body.reason}`,
+            },
           });
         }
         const created = await tx.branchPriceOverride.create({
@@ -341,7 +345,7 @@ export class ServicesController {
         const end = new Date(Math.max(now, open.effectiveFrom.getTime() + 1));
         return tx.branchPriceOverride.update({
           where: { id: open.id },
-          data: { effectiveTo: end },
+          data: { effectiveTo: end, endedBy: p.userId, endedReason: body.reason },
         });
       },
       { actorId: p.userId },

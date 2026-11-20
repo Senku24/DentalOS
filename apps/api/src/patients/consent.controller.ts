@@ -42,9 +42,9 @@ export class ConsentController {
     @CurrentPrincipal() p: Principal,
     @Id() id: string,
     @Param("consentId", new ParseUUIDPipe()) consentId: string,
-    @Body(new ZodPipe(withdrawConsentRequest)) _body: unknown,
+    @Body(new ZodPipe(withdrawConsentRequest)) body: { reason?: string },
   ) {
-    return this.consents.withdraw(p, id, consentId);
+    return this.consents.withdraw(p, id, consentId, body.reason);
   }
 
   @Can("patient:read")

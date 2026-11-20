@@ -35,6 +35,11 @@ export const PERMISSIONS = {
   "document:read": "branch",
   "document:write": "branch",
   "consent:manage": "branch",
+  /**
+   * M2: author consent templates and publish new (append-only) versions. Org-wide clinical/legal
+   * governance; capturing a patient's signature on a template stays `consent:manage`.
+   */
+  "consent:template": "org",
   // Appointments
   "appointment:read": "branch",
   "appointment:write": "branch",
@@ -164,6 +169,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "appointment:read",
     "appointment:write",
     "appointment:checkin",
+    // M2 (ADR 0003, proposed): front desk quotes estimates, books plan items and collects plan consent.
+    "plan:read",
     "billing:read",
     "invoice:write",
     "payment:record",

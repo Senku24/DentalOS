@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "./button";
 import type { BadgeTone } from "./badge";
+import { Button } from "./button";
 
 /** Term/detail pairs for record summaries (profile header, settings read-outs). */
 export function DescriptionList({
@@ -62,7 +62,12 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
       {steps.map((s, i) => {
         const state = i < current ? "done" : i === current ? "current" : "todo";
         return (
-          <li key={s} className="dos-steps__item" data-state={state} aria-current={state === "current" ? "step" : undefined}>
+          <li
+            key={s}
+            className="dos-steps__item"
+            data-state={state}
+            aria-current={state === "current" ? "step" : undefined}
+          >
             <span className="dos-steps__num" aria-hidden="true">
               {state === "done" ? <Check size={14} /> : i + 1}
             </span>

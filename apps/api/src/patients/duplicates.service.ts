@@ -161,6 +161,7 @@ export class DuplicatesService {
           status: r.status,
           reviewedBy: r.reviewedBy,
           reviewedAt: r.reviewedAt?.toISOString() ?? null,
+          reviewReason: r.reviewReason,
           createdAt: r.createdAt.toISOString(),
         }),
       );
@@ -168,8 +169,8 @@ export class DuplicatesService {
     });
   }
 
-  /** The dismissal reason is not stored (no column; audit is ids-only) — see Flags. */
-  async dismiss(p: Principal, id: string) {
+  /** The dismissal reason is stored as `reviewReason` (audit stays ids-only). */
+  async dismiss(p: Principal, id: string, reason: string) {
     const r = await withTenant(
       this.prisma,
       p.tenantId,
@@ -180,7 +181,12 @@ export class DuplicatesService {
           throw new ConflictException({ error: "already_reviewed", status: c.status });
         return tx.duplicateCandidate.update({
           where: { id },
-          data: { status: "DISMISSED", reviewedBy: p.userId, reviewedAt: new Date() },
+          data: {
+            status: "DISMISSED",
+            reviewedBy: p.userId,
+            reviewedAt: new Date(),
+            reviewReason: reason,
+          },
         });
       },
       { actorId: p.userId },
@@ -191,7 +197,7 @@ export class DuplicatesService {
       resourceId: id,
       outcome: "success",
     });
-    return { id: r.id, status: r.status };
+    return { id: r.id, status: r.status, reviewReason: r.reviewReason };
   }
 }
 

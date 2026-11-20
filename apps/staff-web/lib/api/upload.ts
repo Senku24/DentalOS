@@ -45,7 +45,10 @@ export async function uploadDocument(
         res = await fetch(signed.url, {
           method: "PUT",
           body: file,
-          headers: { "Content-Type": file.type, ...((signed as { headers?: Record<string, string> }).headers ?? {}) },
+          headers: {
+            "Content-Type": file.type,
+            ...((signed as { headers?: Record<string, string> }).headers ?? {}),
+          },
         });
       }
     } catch {

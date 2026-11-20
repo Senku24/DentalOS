@@ -28,6 +28,7 @@ the patient portal uses a separate self-scoped surface.
 | `document:read` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `document:write` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `consent:manage` | branch | ✔ | ✔ | ✔ | ✔ |  |
+| `consent:template` | org | ✔ |  |  |  |  |
 | `appointment:read` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `appointment:write` | branch | ✔ | ✔ |  | ✔ |  |
 | `appointment:checkin` | branch | ✔ | ✔ |  | ✔ |  |
@@ -36,7 +37,7 @@ the patient portal uses a separate self-scoped surface.
 | `clinical:write` | branch |  |  | ✔ |  |  |
 | `clinical:sign` | branch |  |  | ✔ |  |  |
 | `clinical:amend` | branch |  |  | ✔ |  |  |
-| `plan:read` | branch | ✔ | ✔ | ✔ |  |  |
+| `plan:read` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `plan:write` | branch |  |  | ✔ |  |  |
 | `plan:approve` | branch |  |  | ✔ |  |  |
 | `billing:read` | branch | ✔ | ✔ |  | ✔ | ✔ |

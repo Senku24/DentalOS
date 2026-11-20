@@ -1,9 +1,7 @@
 import type {
-  CreatePatientRequest,
-  EffectivePriceResponse,
-  INTAKE_TYPES,
-  InvitationResponse,
   DuplicateCheckResponse,
+  EffectivePriceResponse,
+  InvitationResponse,
   MergePatientsRequest,
   PatientResponse,
   ServiceResponse,
@@ -44,38 +42,13 @@ export type CreatedInvitation = InvitationResponse & { token?: string; acceptPat
 
 export type CommunicationPreference = z.infer<typeof communicationPreference>;
 
-export const MERGEABLE_FIELDS = [
-  "firstName",
-  "middleName",
-  "lastName",
-  "preferredName",
-  "dob",
-  "sex",
-  "phone",
-  "altPhone",
-  "email",
-  "addressLine1",
-  "addressLine2",
-  "city",
-  "state",
-  "postalCode",
-  "country",
-] as const;
-export type MergeableField = (typeof MERGEABLE_FIELDS)[number];
+/** Shared contract types (packages/validation); re-exported so screens import from one place. */
+export { MERGEABLE_FIELDS } from "@dentalos/validation";
+export type { ConvertEnquiryRequest, MergeableField } from "@dentalos/validation";
+/** `mergePatientsRequest` now carries `fieldChoices` itself. */
+export type MergeRequest = MergePatientsRequest;
 
-/** apps/api/src/patients/dto.ts `mergePatientsRequestExt`. */
-export type MergeRequest = MergePatientsRequest & {
-  fieldChoices?: Partial<Record<MergeableField, "survivor" | "merged">>;
-};
-
-/** apps/api/src/patients/dto.ts `convertEnquiryRequest`. */
-export type ConvertEnquiryRequest =
-  | { existingPatientId: string }
-  | (Omit<CreatePatientRequest, "enquiryId" | "intakeType"> & {
-      intakeType?: (typeof INTAKE_TYPES)[number];
-    });
-
-/** apps/api/src/patients/dto.ts `searchPatientsQueryExt` (adds intakeType). */
+/** `searchPatientsQuery` filters (intakeType/email now in the shared schema). */
 export interface PatientSearch {
   q?: string;
   phone?: string;

@@ -1,7 +1,9 @@
+import type { Permission } from "@dentalos/contracts";
 import {
   type BranchResponse,
   type DocumentResponse,
   type DuplicateCheckResponse,
+  type MergeableField,
   type PatientResponse,
   type PriceOverrideResponse,
   type ServiceResponse,
@@ -34,11 +36,11 @@ import {
   updateTenantRequest,
   type z,
 } from "@dentalos/validation";
+import { canDo } from "../session";
 import type { Method, MockHandler } from "./client";
 import { mapHttpError } from "./errors";
 import * as F from "./fixtures";
 import { API_PREFIX } from "./routes";
-import type { MergeableField } from "./types";
 
 /**
  * In-memory fake of the M1 API for mock mode. Request bodies are validated with the same zod schemas
@@ -86,7 +88,10 @@ const fail = (
 /** Writes to a merged patient are rejected with a pointer to the survivor (API contract). */
 const assertNotMerged = (p: PatientResponse) => {
   if (p.mergedIntoId)
-    fail(409, "patient_merged", undefined, { mergedIntoId: p.mergedIntoId, survivorId: p.mergedIntoId });
+    fail(409, "patient_merged", undefined, {
+      mergedIntoId: p.mergedIntoId,
+      survivorId: p.mergedIntoId,
+    });
 };
 const writablePatient = (id: string | undefined) => {
   const p = find(db.patients, id);
@@ -94,6 +99,19 @@ const writablePatient = (id: string | undefined) => {
   return p;
 };
 const notFound = () => fail(404, "not_found");
+
+/**
+ * Permission gates mirroring the API on the few reads whose 403 the UI must handle (staff
+ * directory). Display-only principal: the session (dev role / signed-in), overridable in tests.
+ */
+type MockCan = (perm: Permission, resource?: { branchId?: string }) => boolean;
+let mockCan: MockCan = canDo;
+export function setSharedMockCan(fn?: MockCan) {
+  mockCan = fn ?? canDo;
+}
+const assertCan = (perm: Permission, branchId?: string) => {
+  if (!mockCan(perm, branchId ? { branchId } : undefined)) fail(403, "forbidden");
+};
 
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
   const r = schema.safeParse(body ?? {});
@@ -195,7 +213,9 @@ on("PATCH", "/org", (_m, _q, b) => {
     settings: { ...db.tenant.settings, ...body.settings },
     onboardingStatus: body.onboardingStatus ?? db.tenant.onboardingStatus,
     onboardedAt:
-      body.onboardingStatus === "COMPLETED" ? (db.tenant.onboardedAt ?? now()) : db.tenant.onboardedAt,
+      body.onboardingStatus === "COMPLETED"
+        ? (db.tenant.onboardedAt ?? now())
+        : db.tenant.onboardedAt,
   };
   return db.tenant;
 });
@@ -262,13 +282,16 @@ on("POST", "/branches/:id/deactivate", ([id]) =>
 );
 
 // ---- Staff & invitations ---------------------------------------------------------------------
-on("GET", "/staff", (_m, q) => ({
-  items: db.staff.filter(
-    (s) =>
-      (!q.role || s.roles.includes(q.role as never)) &&
-      (!q.branchId || s.orgWide || s.branchScope.includes(q.branchId)),
-  ),
-}));
+on("GET", "/staff", (_m, q) => {
+  assertCan("staff:read", q.branchId || undefined);
+  return {
+    items: db.staff.filter(
+      (s) =>
+        (!q.role || s.roles.includes(q.role as never)) &&
+        (!q.branchId || s.orgWide || s.branchScope.includes(q.branchId)),
+    ),
+  };
+});
 on("PATCH", "/staff/:id", ([id], _q, b) => {
   const row = find(db.staff, id);
   const body = parse(updateMembershipRequest, b);
@@ -315,16 +338,48 @@ on("POST", "/invitations/:id/resend", ([id], _q, b) => {
 });
 
 // ---- Dentist assignments ---------------------------------------------------------------------
-on("GET", "/dentist-assignments", (_m, q) => ({
-  items: db.assignments
-    .filter(
-      (a) =>
-        (!q.userId || a.userId === q.userId) &&
-        (!q.branchId || a.branchId === q.branchId) &&
-        (q.status !== "current" || a.effectiveTo === null || a.effectiveTo > today()),
-    )
-    .sort((a, b) => a.userId.localeCompare(b.userId) || b.effectiveFrom.localeCompare(a.effectiveFrom)),
-}));
+on("GET", "/dentist-assignments", (_m, q) => {
+  assertCan("staff:read", q.branchId || undefined);
+  return {
+    items: db.assignments
+      .filter(
+        (a) =>
+          (!q.userId || a.userId === q.userId) &&
+          (!q.branchId || a.branchId === q.branchId) &&
+          (q.status !== "current" || a.effectiveTo === null || a.effectiveTo > today()),
+      )
+      .sort(
+        (a, b) =>
+          a.userId.localeCompare(b.userId) || b.effectiveFrom.localeCompare(a.effectiveFrom),
+      ),
+  };
+});
+/** GET /scheduling/dentists (scheduling module, appointment:read): current dentists at a branch. */
+on("GET", "/scheduling/dentists", (_m, q) => {
+  if (!q.branchId) fail(400, "validation_failed", [{ path: "branchId", message: "Required" }]);
+  assertCan("appointment:read", q.branchId);
+  find(db.branches, q.branchId);
+  const ids = new Set(
+    db.assignments
+      .filter(
+        (a) => a.branchId === q.branchId && (a.effectiveTo === null || a.effectiveTo > today()),
+      )
+      .map((a) => a.userId),
+  );
+  return {
+    items: db.staff
+      .filter((s) => ids.has(s.userId) && s.roles.includes("DENTIST") && !s.removedAt)
+      .map((s) => ({
+        userId: s.userId,
+        displayName: s.displayName ?? F.STAFF_DIRECTORY[s.userId]?.name ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          (a.displayName ?? "\uffff").localeCompare(b.displayName ?? "\uffff") ||
+          a.userId.localeCompare(b.userId),
+      ),
+  };
+});
 on("POST", "/dentist-assignments", (_m, _q, b) => {
   const body = parse(assignDentistRequest, b);
   if (body.effectiveFrom < today()) fail(400, "effective_date_in_past");
@@ -359,7 +414,7 @@ on("POST", "/dentist-assignments/transfer", (_m, _q, b) => {
     createdAt: now(),
   };
   db.assignments.push(created);
-  return { closed: open, created };
+  return { closed: open, opened: created };
 });
 on("POST", "/dentist-assignments/:id/end", ([id], _q, b) => {
   const row = find(db.assignments, id);
@@ -630,14 +685,16 @@ on("POST", "/patients/:id/identity-verification", ([id], _q, b) => {
 on("GET", "/patients/:id/merges", () => ({ items: [] }));
 on("GET", "/patients/:id/medical-history", ([id]) => {
   const ids = new Set([id, ...db.patients.filter((p) => p.mergedIntoId === id).map((p) => p.id)]);
-  return {
-    items: db.history.filter((h) => ids.has(h.patientId)).sort((a, b) => b.version - a.version),
-  };
+  const versions = db.history
+    .filter((h) => ids.has(h.patientId))
+    .sort((a, b) => b.version - a.version);
+  return { latest: versions[0] ?? null, versions };
 });
 on("POST", "/patients/:id/medical-history", ([id], _q, b) => {
   writablePatient(id);
   const body = parse(addMedicalHistoryRequest, b);
-  const version = Math.max(0, ...db.history.filter((h) => h.patientId === id).map((h) => h.version)) + 1;
+  const version =
+    Math.max(0, ...db.history.filter((h) => h.patientId === id).map((h) => h.version)) + 1;
   const row = {
     id: newId("07"),
     patientId: id ?? "",
@@ -653,7 +710,9 @@ on("POST", "/patients/:id/medical-history", ([id], _q, b) => {
   return row;
 });
 on("GET", "/patients/:id/allergies", ([id], q) => ({
-  items: db.allergies.filter((a) => a.patientId === id && (q.includeResolved === "true" || a.active)),
+  items: db.allergies.filter(
+    (a) => a.patientId === id && (q.includeResolved === "true" || a.active),
+  ),
 }));
 on("POST", "/patients/:id/allergies", ([id], _q, b) => {
   writablePatient(id);
@@ -761,6 +820,7 @@ on("POST", "/enquiries", (_m, _q, b) => {
   db.enquiries.unshift(row);
   return row;
 });
+on("GET", "/enquiries/:id", ([id]) => find(db.enquiries, id));
 on("PATCH", "/enquiries/:id", ([id], _q, b) =>
   Object.assign(find(db.enquiries, id), parse(updateEnquiryRequest, b)),
 );
@@ -774,11 +834,15 @@ on("POST", "/enquiries/:id/convert", ([id], _q, b) => {
     return p;
   }
   const create = table.find(([m, r]) => m === "POST" && r.test("/patients"))?.[2];
-  const p = create?.([], {}, {
-    intakeType: "ENQUIRY",
-    ...(b as object),
-    enquiryId: id,
-  }) as PatientResponse;
+  const p = create?.(
+    [],
+    {},
+    {
+      intakeType: "ENQUIRY",
+      ...(b as object),
+      enquiryId: id,
+    },
+  ) as PatientResponse;
   return p;
 });
 

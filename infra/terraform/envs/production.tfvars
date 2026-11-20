@@ -4,8 +4,8 @@ github_repo = "CHANGE-ME/dentalos"
 api_host        = "api.CHANGE-ME.example"
 certificate_arn = "" # REQUIRED for production (guardrail check fails without it)
 
-staff_callback_urls   = ["https://app.CHANGE-ME.example/auth/callback"]
-staff_logout_urls     = ["https://app.CHANGE-ME.example/"]
+staff_callback_urls   = ["https://app.CHANGE-ME.example/api/auth/callback"]
+staff_logout_urls     = ["https://app.CHANGE-ME.example/sign-in?signed_out=1"]
 patient_callback_urls = ["https://portal.CHANGE-ME.example/auth/callback"]
 patient_logout_urls   = ["https://portal.CHANGE-ME.example/"]
 app_origins           = ["https://app.CHANGE-ME.example", "https://portal.CHANGE-ME.example"]

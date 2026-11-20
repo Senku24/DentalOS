@@ -32,7 +32,7 @@ import { CurrentClaims, CurrentPrincipal } from "../common/principal";
 import { ZodPipe } from "../common/zod.pipe";
 import { EventBus } from "../realtime/event-bus";
 import { UUID, mapDbError, notFound } from "./http";
-import { assertTenantBranches } from "./staff.controller";
+import { assertTenantBranches, isRemoved } from "./staff.controller";
 
 const DAY_MS = 86_400_000;
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -218,22 +218,26 @@ export class InvitationsController {
         const existing = await tx.membership.findUnique({
           where: { tenantId_userId: { tenantId: body.tenantId, userId } },
         });
-        if (existing) return { kind: "member" as const };
+        // A removed member (soft removal keeps the row) is restored by a new invitation.
+        if (existing && !isRemoved(existing)) return { kind: "member" as const };
         const claimed = await tx.staffInvitation.updateMany({
           where: { id: inv.id, status: "PENDING" },
           data: { status: "ACCEPTED", acceptedBy: userId, acceptedAt: now },
         });
         if (claimed.count === 0) return { kind: "gone" as const, error: "invitation_accepted" };
-        const m = await tx.membership.create({
-          data: {
-            tenantId: body.tenantId,
-            userId,
-            roles: inv.roles,
-            orgWide: inv.orgWide,
-            branchScope: inv.branchScope,
-          },
-        });
-        return { kind: "ok" as const, membership: m, invitationId: inv.id };
+        // Access comes from the invitation; the e-mail is the IdP-verified claim (matched above).
+        const access = {
+          roles: inv.roles,
+          orgWide: inv.orgWide,
+          branchScope: inv.branchScope,
+          email: claims.email.toLowerCase(),
+          removedAt: null,
+          removedBy: null,
+        };
+        const m = existing
+          ? await tx.membership.update({ where: { id: existing.id }, data: access })
+          : await tx.membership.create({ data: { tenantId: body.tenantId, userId, ...access } });
+        return { kind: "ok" as const, membership: m, invitationId: inv.id, restored: !!existing };
       },
       { actorId: userId },
     ).catch((e) => mapDbError(e, { conflict: "already_member" }));
@@ -256,13 +260,19 @@ export class InvitationsController {
       resourceId: result.invitationId,
       outcome: "success",
     });
-    this.bus.publish({ tenantId: m.tenantId, type: "membership.created", data: { id: m.id } });
+    this.bus.publish({
+      tenantId: m.tenantId,
+      type: result.restored ? "membership.updated" : "membership.created",
+      data: { id: m.id },
+    });
     return {
       id: m.id,
       userId: m.userId,
       roles: m.roles,
       orgWide: m.orgWide,
       branchScope: m.branchScope,
+      displayName: m.displayName,
+      email: m.email,
       createdAt: m.createdAt,
     };
   }

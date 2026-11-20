@@ -6,8 +6,10 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
     "docs:permissions": "bun scripts/gen-permissions-doc.ts"
   },
-  "devDependencies": { "@types/bun": "latest", "typescript": "^5.7.2" }
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.2"
+  }
 }

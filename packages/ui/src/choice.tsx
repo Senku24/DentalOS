@@ -91,9 +91,7 @@ export function CheckboxGroup({
             disabled={o.disabled}
             checked={value.includes(o.value)}
             onChange={(e) =>
-              onChange(
-                e.target.checked ? [...value, o.value] : value.filter((v) => v !== o.value),
-              )
+              onChange(e.target.checked ? [...value, o.value] : value.filter((v) => v !== o.value))
             }
           />
         ))}

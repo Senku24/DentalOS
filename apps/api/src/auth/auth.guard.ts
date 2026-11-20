@@ -49,7 +49,9 @@ export class AuthGuard implements CanActivate {
     // Staff must have MFA (PRD 7.3). Tenant selection is a hint only; membership is verified server-side.
     if (!claims.mfa) throw new ForbiddenException("MFA required");
     req.claims = claims;
-    if (this.reflector.getAllAndOverride<boolean>("authenticated", [ctx.getHandler(), ctx.getClass()])) {
+    if (
+      this.reflector.getAllAndOverride<boolean>("authenticated", [ctx.getHandler(), ctx.getClass()])
+    ) {
       this.checkStepUp(ctx, claims);
       return true;
     }
@@ -58,7 +60,9 @@ export class AuthGuard implements CanActivate {
     const m = await withTenant(this.prisma, tenantId, (tx) =>
       tx.membership.findUnique({ where: { tenantId_userId: { tenantId, userId: claims.sub } } }),
     ).catch(() => null);
-    if (!m) throw new ForbiddenException();
+    // A removed member (0007: removedAt set; rows removed earlier only have no roles) is not a
+    // member any more — refused on every route, including those without `@Can` (GET /me, /events).
+    if (!m || m.removedAt !== null || m.roles.length === 0) throw new ForbiddenException();
     const principal: Principal = {
       userId: m.userId,
       tenantId: m.tenantId,

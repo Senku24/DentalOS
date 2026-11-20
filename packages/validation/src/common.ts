@@ -14,6 +14,9 @@ export const paise = z.number().int().min(0).max(1_000_000_000);
 export const trimmed = (max = 200) => z.string().trim().min(1).max(max);
 export const optionalText = (max = 2000) => z.string().trim().max(max).optional();
 
+/** IdP subject of a staff member (Membership.userId). Not a uuid: Cognito/dev subjects are opaque strings. */
+export const staffUserId = z.string().trim().min(1).max(200);
+
 export const STAFF_ROLES = ["OWNER", "MANAGER", "DENTIST", "RECEPTIONIST", "ACCOUNTANT"] as const;
 export const staffRole = z.enum(STAFF_ROLES);
 

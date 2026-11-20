@@ -116,7 +116,7 @@ export function createApi(c: ApiClient) {
       assign: (b: AssignDentistRequest) =>
         send<DentistAssignmentResponse>("POST", routes.dentistAssignments(), b),
       transfer: (b: TransferDentistRequest) =>
-        send<{ closed: DentistAssignmentResponse; created: DentistAssignmentResponse }>(
+        send<{ closed: DentistAssignmentResponse; opened: DentistAssignmentResponse }>(
           "POST",
           routes.dentistTransfer(),
           b,
@@ -148,7 +148,8 @@ export function createApi(c: ApiClient) {
           "POST",
           active ? routes.catalogServiceActivate(id) : routes.catalogServiceDeactivate(id),
         ),
-      priceList: (branchId: string) => get<PriceListResponse>(routes.branchPriceList(), { branchId }),
+      priceList: (branchId: string) =>
+        get<PriceListResponse>(routes.branchPriceList(), { branchId }),
       overrideHistory: (serviceId: string, branchId?: string) =>
         get<Items<PriceOverrideResponse>>(routes.priceOverrides(serviceId), { branchId }),
       setOverride: (serviceId: string, b: SetPriceOverrideRequest) =>
@@ -177,8 +178,14 @@ export function createApi(c: ApiClient) {
       merge: (b: MergeRequest) => send<MergeRecordResponse>("POST", routes.patientMerge(), b),
       mergePreview: (survivorId: string, mergedId: string) =>
         get<unknown>(routes.mergePreview(), { survivorId, mergedId }),
-      medicalHistory: (id: string) =>
-        get<Items<MedicalHistoryResponse>>(routes.medicalHistory(id)),
+      // API returns { latest, versions } (newest first); screens consume the common Items shape.
+      medicalHistory: async (id: string): Promise<Items<MedicalHistoryResponse>> => {
+        const r = await get<{
+          latest: MedicalHistoryResponse | null;
+          versions: MedicalHistoryResponse[];
+        }>(routes.medicalHistory(id));
+        return { items: r.versions };
+      },
       addMedicalHistory: (id: string, b: AddMedicalHistoryRequest) =>
         send<MedicalHistoryResponse>("POST", routes.medicalHistory(id), b),
       allergies: (id: string, includeResolved = true) =>
@@ -206,6 +213,7 @@ export function createApi(c: ApiClient) {
     enquiries: {
       list: (q: { status?: string; branchId?: string; q?: string; cursor?: string }) =>
         get<Page<EnquiryResponse>>(routes.enquiries(), q),
+      get: (id: string) => get<EnquiryResponse>(routes.enquiry(id)),
       create: (b: CreateEnquiryRequest) => send<EnquiryResponse>("POST", routes.enquiries(), b),
       update: (id: string, b: UpdateEnquiryRequest) =>
         send<EnquiryResponse>("PATCH", routes.enquiry(id), b),
@@ -219,8 +227,10 @@ export function createApi(c: ApiClient) {
         send<DuplicateCandidateResponse>("POST", routes.duplicateDismiss(id), { reason }),
     },
     documents: {
-      list: (patientId: string, q: { category?: string; branchId?: string; cursor?: string } = {}) =>
-        get<Page<DocumentResponse>>(routes.documents(), { patientId, ...q }),
+      list: (
+        patientId: string,
+        q: { category?: string; branchId?: string; cursor?: string } = {},
+      ) => get<Page<DocumentResponse>>(routes.documents(), { patientId, ...q }),
       requestUpload: (b: RequestUploadRequest) =>
         send<RequestUploadResponse>("POST", routes.documentUploads(), b),
       confirm: (documentId: string, sha256?: string) =>

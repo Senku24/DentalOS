@@ -24,15 +24,15 @@ import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
 import { Can, PRISMA } from "../auth/auth.guard";
 import type { Principal } from "../auth/roles";
-import { CurrentPrincipal, assertCan, branchWhere } from "../common/principal";
+import { CurrentPrincipal, assertCan, branchWhere, withBranchScope } from "../common/principal";
 import { ZodPipe } from "../common/zod.pipe";
 import { UUID, notFound, toPage } from "../org/http";
-import { StorageService } from "../storage/storage.service";
-import { objectStore } from "./object-store";
-
-/** Mirrors StorageService's presigned TTLs (not exported there). */
-const UPLOAD_TTL_SECONDS = 300;
-const DOWNLOAD_TTL_SECONDS = 60;
+import { lineageIds } from "../patients/patient-common";
+import {
+  DOWNLOAD_TTL_SECONDS,
+  StorageService,
+  UPLOAD_TTL_SECONDS,
+} from "../storage/storage.service";
 
 const toDocument = (d: PatientDocument) => ({
   id: d.id,
@@ -46,6 +46,8 @@ const toDocument = (d: PatientDocument) => ({
   status: d.status,
   uploadedBy: d.uploadedBy,
   createdAt: d.createdAt,
+  encounterId: d.encounterId ?? null,
+  deletedReason: d.deletedReason ?? null,
 });
 
 /** Patients are tenant-shared; checked directly by (tenantId, id). Merged tombstones take no new files. */
@@ -131,8 +133,7 @@ export class DocumentsController {
     assertCan(p, "document:write", { branchId: doc.branchId });
     if (doc.status === "AVAILABLE") return toDocument(doc); // idempotent retry
     if (doc.status !== "PENDING_UPLOAD") throw new ConflictException({ error: "document_deleted" });
-    this.storage.assertOwnKey(p, doc.storageKey);
-    const head = await objectStore.head(doc.storageKey);
+    const head = await this.storage.head(p, doc.storageKey);
     if (!head || head.contentLength < 1) throw new ConflictException({ error: "upload_not_found" });
     if (
       head.contentLength > doc.sizeBytes ||
@@ -167,10 +168,12 @@ export class DocumentsController {
     if (q.branchId) assertCan(p, "document:read", { branchId: q.branchId });
     return withTenant(this.prisma, p.tenantId, async (tx) => {
       await loadPatient(tx, p.tenantId, q.patientId);
+      // Encounter-attached documents of merged records stay on the merged id: read the lineage.
+      const ids = await lineageIds(tx, q.patientId);
       const rows = await tx.patientDocument.findMany({
         where: {
           tenantId: p.tenantId,
-          patientId: q.patientId,
+          patientId: { in: ids },
           status: "AVAILABLE",
           category: q.category,
           ...(q.branchId ? { branchId: q.branchId } : {}),
@@ -212,7 +215,7 @@ export class DocumentsController {
   async remove(
     @CurrentPrincipal() p: Principal,
     @Param("id", UUID) id: string,
-    @Body(new ZodPipe(deleteDocumentRequest)) _body: DeleteDocumentRequest,
+    @Body(new ZodPipe(deleteDocumentRequest)) body: DeleteDocumentRequest,
   ) {
     const doc = await this.load(p, id);
     assertCan(p, "document:write", { branchId: doc.branchId });
@@ -223,7 +226,12 @@ export class DocumentsController {
       async (tx) => {
         await tx.patientDocument.updateMany({
           where: { tenantId: p.tenantId, id, status: { not: "DELETED" } },
-          data: { status: "DELETED", deletedBy: p.userId, deletedAt: new Date() },
+          data: {
+            status: "DELETED",
+            deletedBy: p.userId,
+            deletedAt: new Date(),
+            deletedReason: body.reason,
+          },
         });
         return tx.patientDocument.findUniqueOrThrow({ where: { id } });
       },
@@ -235,7 +243,7 @@ export class DocumentsController {
 
   private async load(p: Principal, id: string) {
     const d = await withTenant(this.prisma, p.tenantId, (tx) =>
-      tx.patientDocument.findFirst({ where: { tenantId: p.tenantId, id, ...branchWhere(p) } }),
+      tx.patientDocument.findFirst({ where: withBranchScope(p, { tenantId: p.tenantId, id }) }),
     );
     return d ?? notFound();
   }

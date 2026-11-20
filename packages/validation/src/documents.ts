@@ -88,6 +88,10 @@ export const documentResponse = z.object({
   status: z.enum(DOCUMENT_STATUSES),
   uploadedBy: z.string(),
   createdAt: isoDateTime,
+  /** M2: encounter the document (X-ray, photo) is attached to. Optional until the API returns it. */
+  encounterId: uuid.nullable().optional(),
+  /** Stored since 0005; optional until the API returns it. */
+  deletedReason: z.string().nullable().optional(),
 });
 export type DocumentResponse = z.infer<typeof documentResponse>;
 

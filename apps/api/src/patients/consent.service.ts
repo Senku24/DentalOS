@@ -20,7 +20,7 @@ import { AuditService } from "../audit/audit.service";
 import { PRISMA } from "../auth/auth.guard";
 import type { Principal } from "../auth/roles";
 import { assertCan } from "../common/principal";
-import { findActivePatient, findPatientOr404 } from "./patient-common";
+import { findActivePatient, findPatientOr404, lineageIds } from "./patient-common";
 
 const toConsent = (c: PatientConsent): ConsentResponse & { branchId: string | null } => ({
   id: c.id,
@@ -32,6 +32,7 @@ const toConsent = (c: PatientConsent): ConsentResponse & { branchId: string | nu
   capturedBy: c.capturedBy,
   grantedAt: c.grantedAt?.toISOString() ?? null,
   withdrawnAt: c.withdrawnAt?.toISOString() ?? null,
+  withdrawalReason: c.withdrawalReason,
   branchId: c.branchId,
 });
 
@@ -59,8 +60,9 @@ export class ConsentService {
   async list(p: Principal, patientId: string) {
     const rows = await withTenant(this.prisma, p.tenantId, async (tx) => {
       await findPatientOr404(tx, patientId);
+      // Plan-version consents of merged records stay on the merged id: read the lineage.
       return tx.patientConsent.findMany({
-        where: { patientId },
+        where: { patientId: { in: await lineageIds(tx, patientId) } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
     });
@@ -117,8 +119,8 @@ export class ConsentService {
     return toConsent(c);
   }
 
-  /** Only a GRANTED consent can be withdrawn. Reason is not stored (no column) — see Flags. */
-  async withdraw(p: Principal, patientId: string, consentId: string) {
+  /** Only a GRANTED consent can be withdrawn. The reason is stored as `withdrawalReason`. */
+  async withdraw(p: Principal, patientId: string, consentId: string, reason?: string) {
     const c = await withTenant(
       this.prisma,
       p.tenantId,
@@ -131,7 +133,7 @@ export class ConsentService {
           throw new ConflictException({ error: "consent_not_granted", status: cur.status });
         return tx.patientConsent.update({
           where: { id: consentId },
-          data: { status: "WITHDRAWN", withdrawnAt: new Date() },
+          data: { status: "WITHDRAWN", withdrawnAt: new Date(), withdrawalReason: reason ?? null },
         });
       },
       { actorId: p.userId },

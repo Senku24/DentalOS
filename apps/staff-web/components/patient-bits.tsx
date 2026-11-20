@@ -1,6 +1,6 @@
 "use client";
-import type { DuplicateCheckResponse } from "@dentalos/validation";
 import { Alert, Badge, useLink } from "@dentalos/ui";
+import type { DuplicateCheckResponse } from "@dentalos/validation";
 import { ageFrom, formatDate, formatPhone, humanize, patientName } from "../lib/format";
 
 export type DuplicateMatch = DuplicateCheckResponse["matches"][number];
@@ -32,7 +32,12 @@ export function DuplicateMatchList({
       {matches.map((m) => (
         <li key={m.patient.id} className="dos-card" style={{ padding: "var(--space-3)" }}>
           <div className="dos-cluster" style={{ justifyContent: "space-between" }}>
-            <Link href={`/patients/${m.patient.id}`} className="dos-link" target="_blank" rel="noopener">
+            <Link
+              href={`/patients/${m.patient.id}`}
+              className="dos-link"
+              target="_blank"
+              rel="noopener"
+            >
               {patientName(m.patient)}
               <span className="dos-sr-only"> (opens in a new tab)</span>
             </Link>
@@ -40,8 +45,10 @@ export function DuplicateMatchList({
           </div>
           <div className="dos-muted" style={{ fontSize: "var(--text-sm)" }}>
             {m.patient.mrn ?? "No MRN"} · {formatPhone(m.patient.phone)} ·{" "}
-            {m.patient.dob ? `${formatDate(m.patient.dob)} (${ageFrom(m.patient.dob)} y)` : "DOB unknown"} ·{" "}
-            {branchName(m.patient.originBranchId)}
+            {m.patient.dob
+              ? `${formatDate(m.patient.dob)} (${ageFrom(m.patient.dob)} y)`
+              : "DOB unknown"}{" "}
+            · {branchName(m.patient.originBranchId)}
           </div>
           <div className="dos-cluster" style={{ marginTop: 4 }}>
             {m.reasons.map((r) => (

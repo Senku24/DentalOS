@@ -51,6 +51,8 @@ module "identity" {
   patient_logout_urls    = var.patient_logout_urls
   deletion_protection    = var.deletion_protection
   enable_patient_sms_otp = var.enable_patient_sms_otp
+  log_retention_days     = var.log_retention_days
+  logs_kms_key_arn       = module.kms.arns["logs"]
 }
 
 module "app" {
