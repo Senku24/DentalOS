@@ -16,7 +16,7 @@
     "db:down": "docker compose -f infra/docker-compose.yml down",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun --env-file=.env scripts/db-migrate.ts",
-    "db:seed": "bun --env-file=.env apps/api/scripts/seed-dev.ts",
+    "db:seed": "bun --env-file=.env apps/api/scripts/seed-dev.ts --write-env",
     "openapi": "bun run --cwd apps/api openapi"
   },
   "devDependencies": {

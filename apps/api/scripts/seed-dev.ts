@@ -11,6 +11,7 @@
  * Env: ADMIN_DATABASE_URL (superuser, RLS bootstrap), DATABASE_URL (app role), DEV_JWT_SECRET.
  */
 import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { PrismaClient, type Role, type Tx, withTenant } from "@dentalos/db";
 import { normalizeName, normalizePhoneIN } from "@dentalos/validation";
 import { SignJWT } from "jose";
@@ -408,6 +409,38 @@ async function mintTokens(users: string[]): Promise<Record<string, string> | und
   return out;
 }
 
+/** Updates the NEXT_PUBLIC_DEV_* lines of the repo-root .env in place (only those keys). */
+function writeDevEnv(ui: { id: string; branchId: string; dentist: string }, token?: string) {
+  const file = new URL("../../../.env", import.meta.url).pathname;
+  if (!existsSync(file)) {
+    console.error(`No .env at ${file}: copy .env.example to .env first.`);
+    return;
+  }
+  if (!token) {
+    console.error("DEV_JWT_SECRET is empty in .env: set it, then run this again.");
+    return;
+  }
+  const values: Record<string, string> = {
+    NEXT_PUBLIC_DEV_ROLE: "DENTIST",
+    NEXT_PUBLIC_DEV_TENANT_ID: ui.id,
+    NEXT_PUBLIC_DEV_BRANCH_ID: ui.branchId,
+    NEXT_PUBLIC_DEV_USER_ID: ui.dentist,
+    NEXT_PUBLIC_DEV_TOKEN: token,
+  };
+  const seen = new Set<string>();
+  const lines = readFileSync(file, "utf8")
+    .split("\n")
+    .map((l) => {
+      const k = l.split("=", 1)[0] ?? "";
+      if (!(k in values)) return l;
+      seen.add(k);
+      return `${k}=${values[k]}`;
+    });
+  for (const [k, v] of Object.entries(values)) if (!seen.has(k)) lines.push(`${k}=${v}`);
+  writeFileSync(file, lines.join("\n"));
+  console.error("Updated NEXT_PUBLIC_DEV_* in .env. Restart `bun run dev:web` to pick them up.");
+}
+
 async function main() {
   const timezone = lateMorningZone();
   const A = await seedTenant("A", timezone);
@@ -418,6 +451,7 @@ async function main() {
     ...Object.values(B.users),
     ui.dentist,
   ]);
+  if (process.argv.includes("--write-env")) writeDevEnv(ui, tokens?.[ui.dentist]);
   if (ui.patients[0]) {
     process.stderr.write(
       [

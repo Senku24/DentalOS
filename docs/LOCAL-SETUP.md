@@ -9,7 +9,7 @@ Requirements: Bun 1.3.13, Docker (for Postgres and S3-compatible storage), opens
   cp .env.example .env
   ```
 - Set `DEV_JWT_SECRET` (`openssl rand -hex 32`). Everything else has working local defaults.
-- After step 4, paste the `NEXT_PUBLIC_DEV_*` block printed by `bun run db:seed` into `.env`.
+- `bun run db:seed` fills the `NEXT_PUBLIC_DEV_*` lines of `.env` for you (set `DEV_JWT_SECRET` first).
 
 ## 2. Commands, in order
 ```bash
@@ -17,7 +17,7 @@ bun install                 # install all workspace packages
 bun run db:up              # start Postgres (port 5433) and S3 storage (port 8333) in Docker
 bun run db:migrate         # apply database migrations (superuser; uses ADMIN_DATABASE_URL)
 bun run db:generate        # generate the Prisma client
-bun run db:seed            # demo organisations, staff, patients; prints dev login values + tokens
+bun run db:seed            # demo data + writes the dev login (tenant, branch, token) into .env
 ```
 
 ## 3. Run (three terminals)
@@ -41,6 +41,8 @@ bun run format             # auto-format the repo
 Production-style run of staff-web: `bun run --cwd apps/staff-web start` (after `bun run build`).
 
 ## Troubleshooting
+- "Application error: a client-side exception" / ChunkLoadError → a stale server holds the port or `.next` is out of date: `kill $(lsof -ti :3000)`, `rm -rf apps/staff-web/.next`, then `bun run dev:web`.
+- Never run `bun run build` while `dev:web` is running (they share `apps/staff-web/.next`).
 - `DEV_JWT_SECRET` missing → the API refuses to start; set it in `.env`.
 - `ADMIN_DATABASE_URL is not set` → `.env` is missing or not at the repo root.
 - Port 5433 busy → another Postgres is running; stop it or change the port in `infra/docker-compose.yml` and `.env`.
