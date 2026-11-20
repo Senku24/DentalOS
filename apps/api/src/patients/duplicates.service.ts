@@ -161,6 +161,7 @@ export class DuplicatesService {
           status: r.status,
           reviewedBy: r.reviewedBy,
           reviewedAt: r.reviewedAt?.toISOString() ?? null,
+          reviewReason: r.reviewReason,
           createdAt: r.createdAt.toISOString(),
         }),
       );
@@ -196,7 +197,7 @@ export class DuplicatesService {
       resourceId: id,
       outcome: "success",
     });
-    return { id: r.id, status: r.status };
+    return { id: r.id, status: r.status, reviewReason: r.reviewReason };
   }
 }
 

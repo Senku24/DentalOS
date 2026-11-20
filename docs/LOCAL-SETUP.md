@@ -1,0 +1,48 @@
+# Local setup and run
+
+Requirements: Bun 1.3.13, Docker (for Postgres and S3-compatible storage), openssl.
+
+## 1. Configure `.env`
+- Location: **repo root**, the same folder as `package.json`. Name must be exactly `.env`.
+- Create it from the template:
+  ```bash
+  cp .env.example .env
+  ```
+- Set `DEV_JWT_SECRET` (`openssl rand -hex 32`). Everything else has working local defaults.
+- After step 4, paste the `NEXT_PUBLIC_DEV_*` block printed by `bun run db:seed` into `.env`.
+
+## 2. Commands, in order
+```bash
+bun install                 # install all workspace packages
+bun run db:up              # start Postgres (port 5433) and S3 storage (port 8333) in Docker
+bun run db:migrate         # apply database migrations (superuser; uses ADMIN_DATABASE_URL)
+bun run db:generate        # generate the Prisma client
+bun run db:seed            # demo organisations, staff, patients; prints dev login values + tokens
+```
+
+## 3. Run (three terminals)
+```bash
+bun run dev:api            # API on http://localhost:3001  (health: /health/live)
+bun run dev:web            # Staff web on http://localhost:3000
+bun run dev:worker         # optional: background job worker
+```
+Open http://localhost:3000 — signed in as the seeded dentist (`NEXT_PUBLIC_DEV_ROLE=DENTIST`).
+`NEXT_PUBLIC_DEV_ROLE` only changes what the UI shows. What the API allows is decided by the seeded user's real role (DENTIST).
+
+## 4. Other commands
+```bash
+bun run lint               # Biome lint + format check
+bun run typecheck          # TypeScript for all packages
+bun run build              # production build (staff-web, patient-portal)
+bun run openapi            # regenerate apps/api/openapi.json
+bun run db:down            # stop Docker services (data is kept)
+bun run format             # auto-format the repo
+```
+Production-style run of staff-web: `bun run --cwd apps/staff-web start` (after `bun run build`).
+
+## Troubleshooting
+- `DEV_JWT_SECRET` missing → the API refuses to start; set it in `.env`.
+- `ADMIN_DATABASE_URL is not set` → `.env` is missing or not at the repo root.
+- Port 5433 busy → another Postgres is running; stop it or change the port in `infra/docker-compose.yml` and `.env`.
+- Staff web shows fixture data → `NEXT_PUBLIC_API_URL` is empty in `.env`; restart `dev:web` after editing `.env`.
+- 401/403 in the browser → token expired (`DEV_TOKEN_TTL`); re-run `bun run db:seed` and update `NEXT_PUBLIC_DEV_TOKEN`, then restart `dev:web`.

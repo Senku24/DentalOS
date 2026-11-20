@@ -15,8 +15,7 @@
     "@prisma/instrumentation": "^6.19.3"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",

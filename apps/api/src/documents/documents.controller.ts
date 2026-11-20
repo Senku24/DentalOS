@@ -27,6 +27,7 @@ import type { Principal } from "../auth/roles";
 import { CurrentPrincipal, assertCan, branchWhere, withBranchScope } from "../common/principal";
 import { ZodPipe } from "../common/zod.pipe";
 import { UUID, notFound, toPage } from "../org/http";
+import { lineageIds } from "../patients/patient-common";
 import {
   DOWNLOAD_TTL_SECONDS,
   StorageService,
@@ -45,6 +46,8 @@ const toDocument = (d: PatientDocument) => ({
   status: d.status,
   uploadedBy: d.uploadedBy,
   createdAt: d.createdAt,
+  encounterId: d.encounterId ?? null,
+  deletedReason: d.deletedReason ?? null,
 });
 
 /** Patients are tenant-shared; checked directly by (tenantId, id). Merged tombstones take no new files. */
@@ -165,10 +168,12 @@ export class DocumentsController {
     if (q.branchId) assertCan(p, "document:read", { branchId: q.branchId });
     return withTenant(this.prisma, p.tenantId, async (tx) => {
       await loadPatient(tx, p.tenantId, q.patientId);
+      // Encounter-attached documents of merged records stay on the merged id: read the lineage.
+      const ids = await lineageIds(tx, q.patientId);
       const rows = await tx.patientDocument.findMany({
         where: {
           tenantId: p.tenantId,
-          patientId: q.patientId,
+          patientId: { in: ids },
           status: "AVAILABLE",
           category: q.category,
           ...(q.branchId ? { branchId: q.branchId } : {}),

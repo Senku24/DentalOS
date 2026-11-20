@@ -10,7 +10,7 @@ One AWS account per environment (staging, production); same code, different `env
 | `modules/kms` | One CMK per data class (data, s3, logs, secrets, alerts), rotation on |
 | `modules/network` | VPC, 3 subnet tiers (db tier has **no** internet route), S3 endpoint, flow logs (180 d), SGs |
 | `modules/data` | RDS PostgreSQL 16 (encrypted, forced TLS, daily backups, event + alarms), Secrets Manager, S3 `docs` + object-locked `audit` buckets |
-| `modules/identity` | Cognito: **staff** pool (invite-only, TOTP MFA required, no SMS MFA) and **patient** pool (passwordless OTP) |
+| `modules/identity` | Cognito: **staff** pool (invite-only, TOTP MFA required, no SMS MFA) and **patient** pool (passwordless OTP); staff pre-token-generation **V2** Lambda (`pre_token.tf`) adding `email`, `email_verified`, `name` to access tokens |
 | `modules/app` | ECR (immutable tags), ECS Fargate api + worker (+ ADOT trace sidecar), one-shot migrate task, ALB, WAF, autoscaling, alarms |
 | `modules/cicd` | GitHub OIDC deploy role, limited to one repo **Environment** |
 

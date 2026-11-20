@@ -100,7 +100,7 @@ export class TenantController {
       const [branches, services, members, invitations] = await Promise.all([
         tx.branch.count({ where: { tenantId: p.tenantId, active: true } }),
         tx.service.count({ where: { tenantId: p.tenantId, active: true } }),
-        tx.membership.count({ where: { tenantId: p.tenantId } }),
+        tx.membership.count({ where: { tenantId: p.tenantId, removedAt: null } }),
         tx.staffInvitation.count({ where: { tenantId: p.tenantId } }),
       ]);
       const s = toTenant(t).settings;

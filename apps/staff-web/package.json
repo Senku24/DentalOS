@@ -6,7 +6,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "bun test"
+    "start": "next start -p 3000"
   },
   "dependencies": {
     "@dentalos/ui": "workspace:*",

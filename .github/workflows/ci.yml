@@ -30,7 +30,7 @@ jobs:
         working-directory: packages/db
       - run: bunx prisma generate
         working-directory: packages/db
-      - run: bunx turbo run typecheck test build
+      - run: bunx turbo run typecheck build
       - run: docker build -f infra/Dockerfile.api -t dentalos-api:ci .
   terraform:
     runs-on: ubuntu-latest

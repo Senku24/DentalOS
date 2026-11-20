@@ -1,3 +1,4 @@
+import type { Permission } from "@dentalos/contracts";
 import {
   type BranchResponse,
   type DocumentResponse,
@@ -35,6 +36,7 @@ import {
   updateTenantRequest,
   type z,
 } from "@dentalos/validation";
+import { canDo } from "../session";
 import type { Method, MockHandler } from "./client";
 import { mapHttpError } from "./errors";
 import * as F from "./fixtures";
@@ -97,6 +99,19 @@ const writablePatient = (id: string | undefined) => {
   return p;
 };
 const notFound = () => fail(404, "not_found");
+
+/**
+ * Permission gates mirroring the API on the few reads whose 403 the UI must handle (staff
+ * directory). Display-only principal: the session (dev role / signed-in), overridable in tests.
+ */
+type MockCan = (perm: Permission, resource?: { branchId?: string }) => boolean;
+let mockCan: MockCan = canDo;
+export function setSharedMockCan(fn?: MockCan) {
+  mockCan = fn ?? canDo;
+}
+const assertCan = (perm: Permission, branchId?: string) => {
+  if (!mockCan(perm, branchId ? { branchId } : undefined)) fail(403, "forbidden");
+};
 
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
   const r = schema.safeParse(body ?? {});
@@ -267,13 +282,16 @@ on("POST", "/branches/:id/deactivate", ([id]) =>
 );
 
 // ---- Staff & invitations ---------------------------------------------------------------------
-on("GET", "/staff", (_m, q) => ({
-  items: db.staff.filter(
-    (s) =>
-      (!q.role || s.roles.includes(q.role as never)) &&
-      (!q.branchId || s.orgWide || s.branchScope.includes(q.branchId)),
-  ),
-}));
+on("GET", "/staff", (_m, q) => {
+  assertCan("staff:read", q.branchId || undefined);
+  return {
+    items: db.staff.filter(
+      (s) =>
+        (!q.role || s.roles.includes(q.role as never)) &&
+        (!q.branchId || s.orgWide || s.branchScope.includes(q.branchId)),
+    ),
+  };
+});
 on("PATCH", "/staff/:id", ([id], _q, b) => {
   const row = find(db.staff, id);
   const body = parse(updateMembershipRequest, b);
@@ -320,18 +338,48 @@ on("POST", "/invitations/:id/resend", ([id], _q, b) => {
 });
 
 // ---- Dentist assignments ---------------------------------------------------------------------
-on("GET", "/dentist-assignments", (_m, q) => ({
-  items: db.assignments
-    .filter(
-      (a) =>
-        (!q.userId || a.userId === q.userId) &&
-        (!q.branchId || a.branchId === q.branchId) &&
-        (q.status !== "current" || a.effectiveTo === null || a.effectiveTo > today()),
-    )
-    .sort(
-      (a, b) => a.userId.localeCompare(b.userId) || b.effectiveFrom.localeCompare(a.effectiveFrom),
-    ),
-}));
+on("GET", "/dentist-assignments", (_m, q) => {
+  assertCan("staff:read", q.branchId || undefined);
+  return {
+    items: db.assignments
+      .filter(
+        (a) =>
+          (!q.userId || a.userId === q.userId) &&
+          (!q.branchId || a.branchId === q.branchId) &&
+          (q.status !== "current" || a.effectiveTo === null || a.effectiveTo > today()),
+      )
+      .sort(
+        (a, b) =>
+          a.userId.localeCompare(b.userId) || b.effectiveFrom.localeCompare(a.effectiveFrom),
+      ),
+  };
+});
+/** GET /scheduling/dentists (scheduling module, appointment:read): current dentists at a branch. */
+on("GET", "/scheduling/dentists", (_m, q) => {
+  if (!q.branchId) fail(400, "validation_failed", [{ path: "branchId", message: "Required" }]);
+  assertCan("appointment:read", q.branchId);
+  find(db.branches, q.branchId);
+  const ids = new Set(
+    db.assignments
+      .filter(
+        (a) => a.branchId === q.branchId && (a.effectiveTo === null || a.effectiveTo > today()),
+      )
+      .map((a) => a.userId),
+  );
+  return {
+    items: db.staff
+      .filter((s) => ids.has(s.userId) && s.roles.includes("DENTIST") && !s.removedAt)
+      .map((s) => ({
+        userId: s.userId,
+        displayName: s.displayName ?? F.STAFF_DIRECTORY[s.userId]?.name ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          (a.displayName ?? "\uffff").localeCompare(b.displayName ?? "\uffff") ||
+          a.userId.localeCompare(b.userId),
+      ),
+  };
+});
 on("POST", "/dentist-assignments", (_m, _q, b) => {
   const body = parse(assignDentistRequest, b);
   if (body.effectiveFrom < today()) fail(400, "effective_date_in_past");

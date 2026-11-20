@@ -24,6 +24,8 @@ export interface ClientConfig {
   baseUrl: string;
   /** DEV ONLY: bearer token passed through as-is (NEXT_PUBLIC_DEV_TOKEN). Real sessions come later. */
   token?: string;
+  /** DEV ONLY: organisation sent as X-Tenant-Id (NEXT_PUBLIC_DEV_TENANT_ID). */
+  tenantId?: string;
   /** Serve every call from in-memory fixtures (no network). */
   mock: boolean;
   fetch?: typeof fetch;
@@ -58,6 +60,7 @@ export function createClient(config: ClientConfig): ApiClient {
       const headers: Record<string, string> = { Accept: "application/json" };
       if (opts.body !== undefined) headers["Content-Type"] = "application/json";
       if (config.token) headers.Authorization = `Bearer ${config.token}`;
+      if (config.tenantId) headers["X-Tenant-Id"] = config.tenantId;
       let res: Response;
       try {
         res = await f(buildUrl(config.baseUrl, path, opts.query), {
@@ -99,6 +102,7 @@ const env = {
   url: process.env.NEXT_PUBLIC_API_URL ?? "",
   mock: process.env.NEXT_PUBLIC_API_MOCK,
   token: process.env.NEXT_PUBLIC_DEV_TOKEN,
+  tenantId: process.env.NEXT_PUBLIC_DEV_TENANT_ID,
   prod: process.env.NODE_ENV === "production",
 };
 
@@ -111,6 +115,7 @@ export const MOCK_MODE = env.mock === "1" || (env.mock !== "0" && !env.url && !e
 export const apiClient: ApiClient = createClient({
   baseUrl: env.url,
   token: env.token,
+  tenantId: env.tenantId,
   mock: MOCK_MODE,
   checkResponses: !env.prod,
 });

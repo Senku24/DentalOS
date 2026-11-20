@@ -98,6 +98,9 @@ export const priceOverrideResponse = z.object({
   setBy: z.string(),
   effectiveFrom: isoDateTime,
   effectiveTo: isoDateTime.nullable(),
+  /** Stored since 0005; optional until the API returns them. */
+  endedReason: z.string().nullable().optional(),
+  endedBy: z.string().nullable().optional(),
 });
 export type PriceOverrideResponse = z.infer<typeof priceOverrideResponse>;
 

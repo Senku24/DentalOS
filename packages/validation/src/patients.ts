@@ -54,14 +54,37 @@ export const CONSENT_STATUSES = ["GRANTED", "DECLINED", "WITHDRAWN"] as const;
 export const COMM_CHANNELS = ["SMS", "WHATSAPP", "EMAIL", "VOICE"] as const;
 export const COMM_PURPOSES = ["TRANSACTIONAL", "REMINDER", "MARKETING"] as const;
 export const DUPLICATE_STATUSES = ["PENDING", "DISMISSED", "MERGED"] as const;
-/** Initial consent catalogue (PRD 12.2 leaves the full list open; extend here, DB column is text). */
+/**
+ * Consent catalogue (PRD 12.2 leaves the full list open; extend here, DB column is text).
+ * M2 adds the template-backed clinical types of ADR 0003 (`CONSENT_TEMPLATE_TYPES` in plans.ts).
+ */
 export const CONSENT_TYPES = [
   "DATA_PROCESSING",
   "TREATMENT_GENERAL",
   "CLINICAL_PHOTOGRAPHY",
   "COMMUNICATION_MARKETING",
   "AI_TRANSCRIPTION",
+  "TREATMENT_PLAN",
+  "PROCEDURE",
+  "RADIOGRAPH",
+  "COMMUNICATION",
 ] as const;
+/**
+ * Clinical consent types that exist only as a signed template version (ADR 0003 §4): captured via
+ * POST /patients/:id/consents/sign, never via the free-form M1 endpoint. Parity with the DB CHECK
+ * `PatientConsent_template_link_chk` (TREATMENT_PLAN additionally needs a plan version).
+ */
+export const TEMPLATE_ONLY_CONSENT_TYPES = [
+  "TREATMENT_PLAN",
+  "PROCEDURE",
+  "RADIOGRAPH",
+  "COMMUNICATION",
+] as const satisfies readonly (typeof CONSENT_TYPES)[number][];
+/** Types the free-form M1 endpoint (`recordConsentRequest`) accepts. */
+export const RECORDABLE_CONSENT_TYPES = CONSENT_TYPES.filter(
+  (t): t is Exclude<(typeof CONSENT_TYPES)[number], (typeof TEMPLATE_ONLY_CONSENT_TYPES)[number]> =>
+    !(TEMPLATE_ONLY_CONSENT_TYPES as readonly string[]).includes(t),
+);
 export const CONSENT_METHODS = ["DIGITAL", "PAPER", "VERBAL"] as const;
 
 export const sex = z.enum(SEXES);
@@ -285,6 +308,8 @@ export const allergyResponse = z.object({
   notedBy: z.string(),
   notedAt: isoDateTime,
   resolvedAt: isoDateTime.nullable(),
+  /** Stored since 0005; optional until the API returns it. */
+  resolutionReason: z.string().nullable().optional(),
 });
 export type AllergyResponse = z.infer<typeof allergyResponse>;
 
@@ -304,6 +329,8 @@ export const alertResponse = z.object({
   createdBy: z.string(),
   createdAt: isoDateTime,
   resolvedAt: isoDateTime.nullable(),
+  /** Stored since 0005; optional until the API returns it. */
+  resolutionReason: z.string().nullable().optional(),
 });
 export type AlertResponse = z.infer<typeof alertResponse>;
 
@@ -318,8 +345,9 @@ export type IncludeResolvedQuery = z.infer<typeof includeResolvedQuery>;
 // Consent & communication preferences
 // ---------------------------------------------------------------------------------------------
 
+/** Free-form (M1) consent. Template-only clinical types go through `signConsentRequest`. */
 export const recordConsentRequest = z.object({
-  type: z.enum(CONSENT_TYPES),
+  type: z.enum(CONSENT_TYPES).exclude([...TEMPLATE_ONLY_CONSENT_TYPES]),
   version: trimmed(32),
   status: z.enum(CONSENT_STATUSES).exclude(["WITHDRAWN"]),
   method: z.enum(CONSENT_METHODS),
@@ -344,6 +372,8 @@ export const consentResponse = z.object({
   capturedBy: z.string(),
   grantedAt: isoDateTime.nullable(),
   withdrawnAt: isoDateTime.nullable(),
+  /** Stored since 0005; optional until the API returns it. */
+  withdrawalReason: z.string().nullable().optional(),
 });
 export type ConsentResponse = z.infer<typeof consentResponse>;
 
@@ -403,6 +433,8 @@ export const duplicateCandidateResponse = z.object({
   status: z.enum(DUPLICATE_STATUSES),
   reviewedBy: z.string().nullable(),
   reviewedAt: isoDateTime.nullable(),
+  /** Stored since 0005; optional until the API returns it. */
+  reviewReason: z.string().nullable().optional(),
   createdAt: isoDateTime,
 });
 export type DuplicateCandidateResponse = z.infer<typeof duplicateCandidateResponse>;
