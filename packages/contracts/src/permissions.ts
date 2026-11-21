@@ -56,18 +56,31 @@ export const PERMISSIONS = {
   // Finance
   "billing:read": "branch",
   "invoice:write": "branch",
+  /** M3 (ADR 0004): credit / debit notes — the only correction of an issued invoice. */
+  "invoice:adjust": "branch",
   "payment:record": "branch",
   "discount:apply": "branch",
+  /** Request and process refunds. Above the approval threshold a second person needs `refund:approve`. */
   "refund:issue": "branch",
+  /** M3: approve (or reject) a refund above the threshold; never the requester (maker-checker). */
+  "refund:approve": "branch",
   "finance:report": "branch",
   "compensation:read": "self",
+  /** Commission rules, ledger adjustments, creating and paying settlement runs. */
   "compensation:manage": "org",
+  /** M3: approve a commission settlement run (maker-checker with `compensation:manage`). */
+  "compensation:settle": "org",
   // Inventory
   "inventory:read": "branch",
   "inventory:write": "branch",
+  /** M3: stock adjustments and waste write-offs (dentists consume stock but do not write it off). */
+  "inventory:adjust": "branch",
   "inventory:transfer": "branch",
   // Communications
   "comms:send": "branch",
+  /** M3: outbox, delivery status and notification history. */
+  "comms:read": "branch",
+  /** Notification templates and versions, channel/reminder/quiet-hours settings, recall intervals. */
   "comms:templates": "org",
   // Analytics, AI, audit
   "analytics:branch": "branch",
@@ -121,13 +134,17 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "plan:read",
     "billing:read",
     "invoice:write",
+    "invoice:adjust",
     "payment:record",
     "discount:apply",
+    "refund:approve",
     "finance:report",
     "inventory:read",
     "inventory:write",
+    "inventory:adjust",
     "inventory:transfer",
     "comms:send",
+    "comms:read",
     "analytics:branch",
     "ai:use",
   ],
@@ -176,6 +193,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payment:record",
     "inventory:read",
     "comms:send",
+    "comms:read",
   ],
   ACCOUNTANT: [
     "org:read",
@@ -184,6 +202,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "patient:read",
     "billing:read",
     "invoice:write",
+    "invoice:adjust",
     "payment:record",
     "discount:apply",
     "refund:issue",

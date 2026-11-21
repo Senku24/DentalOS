@@ -1,0 +1,244 @@
+/* Billing (U1). Built on the design tokens; class prefix `bil-`. */
+
+.bil-money {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+.bil-money[data-negative="true"] {
+  color: var(--color-danger);
+}
+.bil-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+.bil-filters > .dos-field {
+  min-width: 150px;
+  flex: 1 1 150px;
+  max-width: 240px;
+}
+.bil-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.bil-subnav a {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  text-decoration: none;
+}
+.bil-subnav a[aria-current="page"] {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-subtle-text);
+  font-weight: var(--weight-semibold);
+  border-color: transparent;
+}
+.bil-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.bil-grid-2 {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .bil-grid-2 {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.bil-totals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+}
+.bil-totals dt {
+  color: var(--color-text-muted);
+}
+.bil-totals dd {
+  margin: 0;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.bil-totals .bil-total-row {
+  font-weight: var(--weight-semibold);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
+}
+.bil-line-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+}
+.bil-line-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+.bil-alloc-row {
+  display: grid;
+  gap: var(--space-2) var(--space-3);
+  grid-template-columns: auto 1fr minmax(110px, 140px);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.bil-pick {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+.bil-checkout {
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.bil-checkout code {
+  overflow-wrap: anywhere;
+}
+
+/* ---- Printable documents (invoice, receipt) ---------------------------------------------------- */
+.bil-sheet {
+  background: #fff;
+  color: #111;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  max-width: 820px;
+  margin: 0 auto;
+  display: grid;
+  gap: var(--space-4);
+}
+.bil-sheet h1,
+.bil-sheet h2,
+.bil-sheet h3 {
+  margin: 0;
+}
+.bil-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.bil-sheet th,
+.bil-sheet td {
+  border-bottom: 1px solid #ccc;
+  padding: 6px 8px;
+  text-align: start;
+  vertical-align: top;
+}
+.bil-sheet th.num,
+.bil-sheet td.num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bil-sheet__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+.bil-sheet__meta {
+  display: grid;
+  gap: 2px;
+  font-size: 0.9rem;
+}
+.bil-sheet__copy {
+  border: 1px solid #111;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  align-self: start;
+}
+.bil-sheet__void {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #b00020;
+  border: 3px solid #b00020;
+  padding: 2px 12px;
+  justify-self: start;
+  transform: rotate(-3deg);
+}
+.bil-print-only {
+  display: none;
+}
+
+@media print {
+  .dos-sidebar,
+  .dos-topbar,
+  .dos-skip-link,
+  .dos-toasts,
+  .bil-no-print,
+  .dos-page-head,
+  .dos-crumbs {
+    display: none !important;
+  }
+  .dos-shell {
+    display: block !important;
+  }
+  .dos-main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  .bil-sheet {
+    border: 0;
+    padding: 0;
+    max-width: none;
+  }
+  .bil-print-only {
+    display: block;
+  }
+}
+
+.bil-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.bil-seg button {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 0;
+  border-inline-start: 1px solid var(--color-border);
+  font: inherit;
+  cursor: pointer;
+}
+.bil-seg button:first-child {
+  border-inline-start: 0;
+}
+.bil-seg button[aria-pressed="true"] {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-subtle-text);
+  font-weight: var(--weight-semibold);
+}
+.bil-seg button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  position: relative;
+}

@@ -42,16 +42,21 @@ the patient portal uses a separate self-scoped surface.
 | `plan:approve` | branch |  |  | ✔ |  |  |
 | `billing:read` | branch | ✔ | ✔ |  | ✔ | ✔ |
 | `invoice:write` | branch | ✔ | ✔ |  | ✔ | ✔ |
+| `invoice:adjust` | branch | ✔ | ✔ |  |  | ✔ |
 | `payment:record` | branch | ✔ | ✔ |  | ✔ | ✔ |
 | `discount:apply` | branch | ✔ | ✔ |  |  | ✔ |
 | `refund:issue` | branch | ✔ |  |  |  | ✔ |
+| `refund:approve` | branch | ✔ | ✔ |  |  |  |
 | `finance:report` | branch | ✔ | ✔ |  |  | ✔ |
 | `compensation:read` | self | ✔ |  | ✔ |  | ✔ |
 | `compensation:manage` | org | ✔ |  |  |  | ✔ |
+| `compensation:settle` | org | ✔ |  |  |  |  |
 | `inventory:read` | branch | ✔ | ✔ | ✔ | ✔ |  |
 | `inventory:write` | branch | ✔ | ✔ | ✔ |  |  |
+| `inventory:adjust` | branch | ✔ | ✔ |  |  |  |
 | `inventory:transfer` | branch | ✔ | ✔ |  |  |  |
 | `comms:send` | branch | ✔ | ✔ |  | ✔ |  |
+| `comms:read` | branch | ✔ | ✔ |  | ✔ |  |
 | `comms:templates` | org | ✔ |  |  |  |  |
 | `analytics:branch` | branch | ✔ | ✔ |  |  | ✔ |
 | `analytics:org` | org | ✔ |  |  |  | ✔ |

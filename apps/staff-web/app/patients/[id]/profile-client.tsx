@@ -11,7 +11,9 @@ import {
 } from "@dentalos/ui";
 import { PATIENT_LIFECYCLE_STAGES, type PatientResponse } from "@dentalos/validation";
 import { useMemo, useState } from "react";
+import { PatientFinanceTab } from "../../../components/billing";
 import { MockNotice, RequirePermission, useBranches } from "../../../components/common";
+import { PatientCommunicationCard } from "../../../components/notifications";
 import { MergedBanner } from "../../../components/patient-bits";
 import { api } from "../../../lib/api/endpoints";
 import { type ApiError, errorStateFor } from "../../../lib/api/errors";
@@ -112,6 +114,7 @@ function Inner({ id }: { id: string }) {
       : []),
     { id: "consents", label: "Consents & communication" },
     ...(canDo("document:read") ? [{ id: "documents", label: "Documents" }] : []),
+    ...(canDo("billing:read") ? [{ id: "finance", label: "Finance" }] : []),
     { id: "activity", label: "Activity" },
   ];
 
@@ -200,8 +203,16 @@ function Inner({ id }: { id: string }) {
               }}
             />
           ) : null}
-          {tab === "consents" ? <ConsentsTab /> : null}
+          {tab === "consents" ? (
+            <>
+              <ConsentsTab />
+              {canDo("comms:read") ? <PatientCommunicationCard patientId={p.id} /> : null}
+            </>
+          ) : null}
           {tab === "documents" ? <DocumentsTab /> : null}
+          {tab === "finance" ? (
+            <PatientFinanceTab patientId={p.id} readOnly={ctx.readOnly} />
+          ) : null}
           {tab === "activity" ? (
             <EmptyState
               title="Activity timeline is coming"

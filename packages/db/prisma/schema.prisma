@@ -225,22 +225,139 @@ enum ConsentTemplateType {
   COMMUNICATION
 }
 
+// --- M3 business operations (ADR 0004: rules are proposed defaults, pending sign-off) ---
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+  CHEQUE
+  WALLET
+  OTHER
+}
+
+enum PaymentStatus {
+  RECORDED
+  PENDING
+  FAILED
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  PROCESSED
+  REJECTED
+}
+
+enum AdjustmentKind {
+  CREDIT
+  DEBIT
+}
+
+enum LedgerEntryKind {
+  INVOICE
+  INVOICE_VOID
+  PAYMENT
+  REFUND
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+enum CreditEntryKind {
+  ADVANCE
+  APPLIED
+  REFUNDED
+  ADJUSTMENT
+}
+
+enum CommissionRuleType {
+  PERCENT_OF_COLLECTED
+  PERCENT_OF_BILLED
+  FIXED_PER_PROCEDURE
+}
+
+enum CommissionEntryKind {
+  ACCRUAL
+  REVERSAL
+  ADJUSTMENT
+  SETTLEMENT
+}
+
+enum SettlementStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum InventoryUnit {
+  PIECE
+  BOX
+  PACK
+  SET
+  VIAL
+  CARTRIDGE
+  GRAM
+  KILOGRAM
+  MILLILITRE
+  LITRE
+}
+
+enum CostingMethod {
+  WEIGHTED_AVERAGE
+}
+
+enum StockMovementKind {
+  RECEIPT
+  CONSUMPTION
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+  WASTE
+}
+
+enum StockTransferStatus {
+  IN_TRANSIT
+  RECEIVED
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED_NO_CONSENT
+  OPTED_OUT
+}
+
 model Tenant {
-  id                String            @id @default(uuid()) @db.Uuid
-  name              String
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String
   /// Organisation settings (display, defaults). Not for secrets.
-  settings          Json              @default("{}")
-  onboardingStatus  OnboardingStatus  @default(PENDING)
-  onboardedAt       DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @default(now()) @updatedAt
-  branches          Branch[]
-  members           Membership[]
-  invitations       StaffInvitation[]
-  serviceCategories ServiceCategory[]
-  services          Service[]
-  patients          Patient[]
-  consentTemplates  ConsentTemplate[]
+  settings              Json                   @default("{}")
+  onboardingStatus      OnboardingStatus       @default(PENDING)
+  onboardedAt           DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
+  branches              Branch[]
+  members               Membership[]
+  invitations           StaffInvitation[]
+  serviceCategories     ServiceCategory[]
+  services              Service[]
+  patients              Patient[]
+  consentTemplates      ConsentTemplate[]
+  inventoryItems        InventoryItem[]
+  suppliers             Supplier[]
+  notificationTemplates NotificationTemplate[]
+  commissionRules       CommissionRule[]
+  commissionSettlements CommissionSettlement[]
 }
 
 model Branch {
@@ -279,6 +396,21 @@ model Branch {
   appointments       Appointment[]
   encounters         Encounter[]
   treatmentPlans     TreatmentPlan[]
+  invoiceCounters    InvoiceCounter[]
+  invoices           Invoice[]
+  payments           Payment[]
+  paymentAllocations PaymentAllocation[]
+  refunds            Refund[]
+  adjustments        InvoiceAdjustment[]
+  ledgerEntries      FinanceLedgerEntry[]
+  creditEntries      PatientCreditEntry[]
+  commissionEntries  CommissionEntry[]
+  stockMovements     StockMovement[]
+  stockBalances      StockBalance[]
+  stockReceipts      StockReceipt[]
+  transfersOut       StockTransfer[]           @relation("TransferFrom")
+  transfersIn        StockTransfer[]           @relation("TransferTo")
+  notifications      NotificationOutbox[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -388,15 +520,17 @@ model DentistBranchAssignment {
 // ---------------------------------------------------------------------------------------------
 
 model ServiceCategory {
-  id        String    @id @default(uuid()) @db.Uuid
-  tenantId  String    @db.Uuid
-  name      String
-  sortOrder Int       @default(0)
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @default(now()) @updatedAt
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
-  services  Service[]
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @db.Uuid
+  name            String
+  sortOrder       Int              @default(0)
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @default(now()) @updatedAt
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  services        Service[]
+  invoiceLines    InvoiceLine[]
+  commissionRules CommissionRule[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
@@ -415,6 +549,10 @@ model Service {
   /// Central price in paise (₹1 = 100 paise). Branch overrides live in BranchPriceOverride.
   basePricePaise Int
   taxable        Boolean               @default(false)
+  /// M3: GST classification (HSN for goods / SAC for services, 4–8 digits) and rate in basis points
+  /// (1800 = 18%). Both optional; billing falls back to Tenant.settings.billing defaults (ADR 0004).
+  hsnSac         String?
+  gstRateBp      Int?
   active         Boolean               @default(true)
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @default(now()) @updatedAt
@@ -423,6 +561,8 @@ model Service {
   priceOverrides BranchPriceOverride[]
   planItems      PlanItem[]
   procedures     ProcedureRecord[]
+  invoiceLines   InvoiceLine[]
+  recallSetting  RecallSetting?
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -521,6 +661,15 @@ model Patient {
   diagnoses                  Diagnosis[]
   procedures                 ProcedureRecord[]
   treatmentPlans             TreatmentPlan[]
+  invoices                   Invoice[]
+  invoiceLines               InvoiceLine[]
+  payments                   Payment[]
+  paymentAllocations         PaymentAllocation[]
+  refunds                    Refund[]
+  adjustments                InvoiceAdjustment[]
+  ledgerEntries              FinanceLedgerEntry[]
+  creditEntries              PatientCreditEntry[]
+  notifications              NotificationOutbox[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, mrn])
@@ -923,6 +1072,9 @@ model Encounter {
   documents             PatientDocument[]
   treatmentPlans        TreatmentPlan[]
   planItemSessions      PlanItemSession[]
+  invoices              Invoice[]
+  invoiceLines          InvoiceLine[]
+  commissionEntries     CommissionEntry[]
 
   @@unique([tenantId, id])
   /// Lets clinical children prove they belong to the encounter's patient.
@@ -1025,27 +1177,32 @@ model Diagnosis {
 }
 
 model ProcedureRecord {
-  id          String          @id @default(uuid()) @db.Uuid
-  tenantId    String          @db.Uuid
-  encounterId String          @db.Uuid
-  patientId   String          @db.Uuid
-  serviceId   String?         @db.Uuid
-  planItemId  String?         @db.Uuid
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @db.Uuid
+  encounterId    String          @db.Uuid
+  patientId      String          @db.Uuid
+  serviceId      String?         @db.Uuid
+  planItemId     String?         @db.Uuid
   /// Free text when no catalogue service applies.
-  description String?
-  toothCode   Int?            @db.SmallInt
-  surfaces    String[]        @default([])
-  status      ProcedureStatus @default(COMPLETED)
-  notes       String?
-  performedBy String
-  performedAt DateTime        @default(now())
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @default(now()) @updatedAt
-  patient     Patient         @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  encounter   Encounter       @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
-  service     Service?        @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
-  planItem    PlanItem?       @relation(fields: [tenantId, planItemId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  description    String?
+  toothCode      Int?            @db.SmallInt
+  surfaces       String[]        @default([])
+  status         ProcedureStatus @default(COMPLETED)
+  notes          String?
+  performedBy    String
+  performedAt    DateTime        @default(now())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @default(now()) @updatedAt
+  patient        Patient         @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  encounter      Encounter       @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  service        Service?        @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  planItem       PlanItem?       @relation(fields: [tenantId, planItemId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  invoiceLines   InvoiceLine[]
+  stockMovements StockMovement[]
 
+  /// M3: lets invoice lines and stock consumption link a procedure (same tenant / same patient).
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, patientId])
   @@index([tenantId])
   @@index([tenantId, encounterId])
   @@index([tenantId, patientId])
@@ -1082,6 +1239,7 @@ model TreatmentPlan {
   encounter      Encounter?             @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
   versions       TreatmentPlanVersion[]
   items          PlanItem[]
+  invoices       Invoice[]
 
   @@unique([tenantId, id])
   /// Lets versions and items prove they belong to the plan's patient.
@@ -1146,6 +1304,7 @@ model PlanItem {
   sessions           PlanItemSession[]
   appointments       Appointment[]
   procedures         ProcedureRecord[]
+  invoiceLines       InvoiceLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, id, patientId])
@@ -1215,5 +1374,826 @@ model ConsentTemplateVersion {
 
   @@unique([tenantId, id])
   @@unique([tenantId, templateId, version])
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M3 Billing: invoices, payments, refunds, adjustments, ledgers (ADR 0004 §1–§6)
+// Money is integer paise. Posted financial records are never mutated to hide history: issued
+// invoices are frozen (trigger), payments/allocations/adjustments/ledgers are append-only.
+// ---------------------------------------------------------------------------------------------
+
+/// Gap-free document numbering: one row per (branch, series, financial year), locked FOR UPDATE by
+/// `allocate_document_seq()` inside the issuing transaction (a rollback gives the number back).
+/// Series: INV invoice, CN credit note, DN debit note, RCP payment receipt.
+model InvoiceCounter {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  branchId      String   @db.Uuid
+  series        String   @default("INV")
+  /// Indian financial year (Apr–Mar) as "25-26".
+  financialYear String
+  /// The NEXT sequence number to hand out (starts at 1).
+  next          Int      @default(1)
+  updatedAt     DateTime @default(now()) @updatedAt
+  branch        Branch   @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, branchId, series, financialYear])
+  @@index([tenantId])
+}
+
+/// Retry safety for append-only writes without a natural unique key (debit/credit notes, advance application and
+/// adjustment, commission adjustments, settlements, stock receipts / consumption / adjustments / waste / transfers).
+/// The service inserts a row FIRST in the same transaction (refType/refId = the id it pre-generated for the result);
+/// a unique violation means "replay: answer with the stored refId, write nothing". Append-only (UPDATE/DELETE revoked).
+/// No FK to Tenant (RLS isolates it, like the other ledgers' tenantId).
+model RequestDedupe {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  /// e.g. "invoice.adjust", "stock.receive".
+  scope          String
+  idempotencyKey String
+  /// SHA-256 of the canonical request body: a reused key with a different body is a 409 idempotency_conflict.
+  requestHash    String?
+  refType        String?
+  refId          String?
+  createdBy      String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([tenantId, scope, idempotencyKey])
+  @@index([tenantId])
+}
+
+/// DRAFT (editable, no number) -> ISSUED -> PARTIALLY_PAID -> PAID, or VOID (DRAFT / unpaid ISSUED only).
+/// After issue everything except status, paidPaise, adjustmentPaise, balancePaise, dueDate, notes and the
+/// void fields is frozen by trigger; corrections are InvoiceAdjustment rows. paid/balance/status are
+/// maintained by triggers on PaymentAllocation and InvoiceAdjustment. Never deleted.
+model Invoice {
+  id                       String               @id @default(uuid()) @db.Uuid
+  tenantId                 String               @db.Uuid
+  branchId                 String               @db.Uuid
+  patientId                String               @db.Uuid
+  /// "BR1/25-26/000123"; NULL while DRAFT. Unique per tenant.
+  number                   String?
+  status                   InvoiceStatus        @default(DRAFT)
+  issuedAt                 DateTime?            @db.Timestamptz(3)
+  issuedBy                 String?
+  dueDate                  DateTime?            @db.Date
+  currency                 String               @default("INR")
+  /// Whether line unit prices include GST (frozen at creation).
+  taxInclusive             Boolean              @default(false)
+  /// GST snapshot (supplier = the branch/tenant at issue). Place of supply decides CGST+SGST vs IGST.
+  supplierGstin            String?
+  supplierStateCode        String?
+  placeOfSupplyStateCode   String?
+  /// Σ line gross (quantity × unit price as entered), total discount (line + invoice level), Σ GST, payable total.
+  subtotalPaise            Int
+  discountPaise            Int                  @default(0)
+  taxPaise                 Int                  @default(0)
+  totalPaise               Int
+  /// Invoice-level part of discountPaise (apportioned onto lines as allocatedDiscountPaise).
+  invoiceDiscountPaise     Int                  @default(0)
+  invoiceDiscountPercentBp Int?
+  discountReason           String?
+  discountAppliedBy        String?
+  /// Net credit/debit notes: Σ debit − Σ credit (trigger).
+  adjustmentPaise          Int                  @default(0)
+  /// Σ allocations (net of refund reversals) (trigger).
+  paidPaise                Int                  @default(0)
+  /// totalPaise + adjustmentPaise − paidPaise (CHECK; trigger-maintained), never negative.
+  balancePaise             Int
+  /// Plan (and its version at invoicing) the estimate came from; NULL for ad hoc invoices.
+  planId                   String?              @db.Uuid
+  planVersion              Int?
+  encounterId              String?              @db.Uuid
+  notes                    String?
+  voidReason               String?
+  voidedBy                 String?
+  voidedAt                 DateTime?            @db.Timestamptz(3)
+  createdBy                String
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @default(now()) @updatedAt
+  branch                   Branch               @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient                  Patient              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  plan                     TreatmentPlan?       @relation(fields: [tenantId, planId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  encounter                Encounter?           @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  lines                    InvoiceLine[]
+  allocations              PaymentAllocation[]
+  refunds                  Refund[]
+  adjustments              InvoiceAdjustment[]
+  ledgerEntries            FinanceLedgerEntry[]
+  commissionEntries        CommissionEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, patientId])
+  /// Lets allocations prove payment and invoice share patient AND branch.
+  @@unique([tenantId, id, patientId, branchId])
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, planId])
+}
+
+/// Editable only while the invoice is DRAFT (trigger). Amounts are computed by @dentalos/validation `billing.ts`.
+model InvoiceLine {
+  id                     String            @id @default(uuid()) @db.Uuid
+  tenantId               String            @db.Uuid
+  invoiceId              String            @db.Uuid
+  /// Copied from the invoice (composite FK): plan items, procedures and encounters must be the patient's.
+  patientId              String            @db.Uuid
+  lineNo                 Int
+  serviceId              String?           @db.Uuid
+  /// Category at invoicing time (snapshot) — commission rules filter on it.
+  serviceCategoryId      String?           @db.Uuid
+  description            String
+  hsnSac                 String?
+  quantity               Int               @default(1)
+  unitPricePaise         Int
+  /// quantity × unitPricePaise.
+  grossPaise             Int
+  /// Line-level discount (needs discount:apply + reason).
+  discountPaise          Int               @default(0)
+  discountReason         String?
+  /// This line's share of the invoice-level discount.
+  allocatedDiscountPaise Int               @default(0)
+  /// Value on which GST is charged (ex-tax).
+  taxableValuePaise      Int
+  taxRateBp              Int               @default(0)
+  cgstPaise              Int               @default(0)
+  sgstPaise              Int               @default(0)
+  igstPaise              Int               @default(0)
+  /// taxableValuePaise + cgst + sgst + igst.
+  totalPaise             Int
+  planItemId             String?           @db.Uuid
+  procedureRecordId      String?           @db.Uuid
+  encounterId            String?           @db.Uuid
+  /// Revenue attribution (PRD 2.5): the dentist who did the work. IdP subject, NOT a FK; guarded by
+  /// tenant_member_guard on write. Never rewritten after a dentist transfer.
+  dentistUserId          String?
+  toothCode              Int?              @db.SmallInt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @default(now()) @updatedAt
+  invoice                Invoice           @relation(fields: [tenantId, invoiceId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  service                Service?          @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+  serviceCategory        ServiceCategory?  @relation(fields: [tenantId, serviceCategoryId], references: [tenantId, id], onDelete: Restrict)
+  planItem               PlanItem?         @relation(fields: [tenantId, planItemId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  procedureRecord        ProcedureRecord?  @relation(fields: [tenantId, procedureRecordId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  encounter              Encounter?        @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  commissionEntries      CommissionEntry[]
+  patient                Patient           @relation(fields: [patientId], references: [id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, invoiceId, id])
+  @@unique([tenantId, invoiceId, lineNo])
+  @@index([tenantId])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, dentistUserId])
+  @@index([tenantId, planItemId])
+  @@index([tenantId, procedureRecordId])
+}
+
+/// Money received (or pending at a gateway). Money columns are immutable; the only updates are a PENDING
+/// payment becoming RECORDED / FAILED (+ gatewayRef, receiptNumber, receivedAt) — column-level grant + trigger.
+/// Never deleted. A payment is spent via PaymentAllocation rows; the unallocated rest is patient advance.
+model Payment {
+  id             String               @id @default(uuid()) @db.Uuid
+  tenantId       String               @db.Uuid
+  branchId       String               @db.Uuid
+  patientId      String               @db.Uuid
+  method         PaymentMethod
+  amountPaise    Int
+  /// UPI txn id, cheque number, card last-4 + auth code, bank reference … never full card numbers.
+  reference      String?
+  receivedAt     DateTime             @default(now()) @db.Timestamptz(3)
+  receivedBy     String
+  /// Required on every payment request; unique per tenant (replay returns the original row).
+  idempotencyKey String
+  /// Provider id: "MANUAL" (recorded by staff) | "STUB" | a real gateway later.
+  gateway        String               @default("MANUAL")
+  gatewayRef     String?
+  status         PaymentStatus        @default(RECORDED)
+  /// Gap-free receipt number (series RCP), assigned when RECORDED.
+  receiptNumber  String?
+  failureCode    String?
+  notes          String?
+  createdAt      DateTime             @default(now())
+  branch         Branch               @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient        Patient              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  allocations    PaymentAllocation[]
+  refunds        Refund[]
+  ledgerEntries  FinanceLedgerEntry[]
+  creditEntries  PatientCreditEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, patientId])
+  @@unique([tenantId, id, patientId, branchId])
+  @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId])
+  @@index([tenantId, branchId, receivedAt])
+  @@index([tenantId, patientId, receivedAt])
+  @@index([tenantId, gateway, gatewayRef])
+}
+
+/// Append-only (UPDATE/DELETE revoked). amountPaise > 0 applies money to an invoice; < 0 is the reversal
+/// written when a refund is processed against that invoice (refundId set). Payment and invoice must share
+/// patient AND branch (composite FKs). Triggers keep Invoice.paid/balance/status in step.
+model PaymentAllocation {
+  id                String               @id @default(uuid()) @db.Uuid
+  tenantId          String               @db.Uuid
+  paymentId         String               @db.Uuid
+  invoiceId         String               @db.Uuid
+  patientId         String               @db.Uuid
+  branchId          String               @db.Uuid
+  amountPaise       Int
+  refundId          String?              @db.Uuid
+  allocatedBy       String
+  createdAt         DateTime             @default(now())
+  payment           Payment              @relation(fields: [tenantId, paymentId, patientId, branchId], references: [tenantId, id, patientId, branchId], onDelete: Restrict)
+  invoice           Invoice              @relation(fields: [tenantId, invoiceId, patientId, branchId], references: [tenantId, id, patientId, branchId], onDelete: Restrict)
+  refund            Refund?              @relation(fields: [tenantId, refundId, paymentId], references: [tenantId, id, paymentId], onDelete: Restrict)
+  branch            Branch               @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient           Patient              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  commissionEntries CommissionEntry[]
+  creditEntries     PatientCreditEntry[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, paymentId])
+  @@index([tenantId, invoiceId])
+}
+
+/// Idempotent webhook processing: one row per (gateway, provider event id). Insert first; a unique
+/// violation means "already processed" (ADR 0004 §5). Payload is not stored (hash only).
+model PaymentGatewayEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  gateway     String
+  eventId     String
+  eventType   String
+  /// SHA-256 of the raw body (tamper/duplicate diagnostics) — never the body itself.
+  payloadHash String
+  outcome     String
+  receivedAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([tenantId, gateway, eventId])
+  @@index([tenantId])
+}
+
+/// Refund of (part of) a payment: REQUESTED -> APPROVED -> PROCESSED, or REJECTED. Money columns are
+/// immutable (trigger). With invoiceId set, processing writes a negative PaymentAllocation (invoice balance
+/// goes back up); without, the refund comes out of the payment's unallocated advance. Never deleted.
+model Refund {
+  id              String               @id @default(uuid()) @db.Uuid
+  tenantId        String               @db.Uuid
+  branchId        String               @db.Uuid
+  patientId       String               @db.Uuid
+  paymentId       String               @db.Uuid
+  invoiceId       String?              @db.Uuid
+  amountPaise     Int
+  /// How the money goes back (usually the original payment's method).
+  method          PaymentMethod
+  reference       String?
+  reason          String
+  status          RefundStatus         @default(REQUESTED)
+  requestedBy     String
+  requestedAt     DateTime             @default(now()) @db.Timestamptz(3)
+  approvedBy      String?
+  approvedAt      DateTime?            @db.Timestamptz(3)
+  rejectedBy      String?
+  rejectedAt      DateTime?            @db.Timestamptz(3)
+  rejectionReason String?
+  processedBy     String?
+  processedAt     DateTime?            @db.Timestamptz(3)
+  idempotencyKey  String
+  gateway         String               @default("MANUAL")
+  gatewayRef      String?
+  createdAt       DateTime             @default(now())
+  payment         Payment              @relation(fields: [tenantId, paymentId, patientId, branchId], references: [tenantId, id, patientId, branchId], onDelete: Restrict)
+  invoice         Invoice?             @relation(fields: [tenantId, invoiceId, patientId, branchId], references: [tenantId, id, patientId, branchId], onDelete: Restrict)
+  branch          Branch               @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient         Patient              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  allocations     PaymentAllocation[]
+  ledgerEntries   FinanceLedgerEntry[]
+  creditEntries   PatientCreditEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, paymentId])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@index([tenantId, paymentId])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, patientId])
+}
+
+/// Credit / debit note against an ISSUED invoice (the only way to correct it). Append-only, gap-free
+/// numbering (series CN / DN). amountPaise is tax-inclusive; taxPaise is the GST part for reporting.
+model InvoiceAdjustment {
+  id            String               @id @default(uuid()) @db.Uuid
+  tenantId      String               @db.Uuid
+  branchId      String               @db.Uuid
+  patientId     String               @db.Uuid
+  invoiceId     String               @db.Uuid
+  kind          AdjustmentKind
+  number        String
+  amountPaise   Int
+  taxPaise      Int                  @default(0)
+  reason        String
+  issuedBy      String
+  issuedAt      DateTime             @default(now()) @db.Timestamptz(3)
+  invoice       Invoice              @relation(fields: [tenantId, invoiceId, patientId, branchId], references: [tenantId, id, patientId, branchId], onDelete: Restrict)
+  branch        Branch               @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient       Patient              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  ledgerEntries FinanceLedgerEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, branchId, issuedAt])
+}
+
+/// Append-only patient-account ledger (statements, branch/org revenue reporting). amountPaise is the effect on
+/// what the patient owes: INVOICE +, INVOICE_VOID −, PAYMENT −, REFUND +, CREDIT_NOTE −, DEBIT_NOTE +.
+/// Written by the billing service in the same transaction as the source row; never updated.
+model FinanceLedgerEntry {
+  id           String             @id @default(uuid()) @db.Uuid
+  tenantId     String             @db.Uuid
+  branchId     String             @db.Uuid
+  patientId    String             @db.Uuid
+  kind         LedgerEntryKind
+  amountPaise  Int
+  invoiceId    String?            @db.Uuid
+  paymentId    String?            @db.Uuid
+  refundId     String?            @db.Uuid
+  adjustmentId String?            @db.Uuid
+  occurredAt   DateTime           @default(now()) @db.Timestamptz(3)
+  createdBy    String
+  branch       Branch             @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient      Patient            @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  invoice      Invoice?           @relation(fields: [tenantId, invoiceId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  payment      Payment?           @relation(fields: [tenantId, paymentId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  refund       Refund?            @relation(fields: [tenantId, refundId], references: [tenantId, id], onDelete: Restrict)
+  adjustment   InvoiceAdjustment? @relation(fields: [tenantId, adjustmentId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId, occurredAt])
+  @@index([tenantId, branchId, occurredAt])
+  @@index([tenantId, invoiceId])
+}
+
+/// Append-only advance/credit ledger per patient. ADVANCE + (unallocated payment money), APPLIED − (spent on an
+/// invoice via an allocation), REFUNDED − (advance refunded), ADJUSTMENT ±. Balance = Σ amountPaise per patient,
+/// never negative (trigger, serialised per patient).
+model PatientCreditEntry {
+  id           String             @id @default(uuid()) @db.Uuid
+  tenantId     String             @db.Uuid
+  patientId    String             @db.Uuid
+  branchId     String             @db.Uuid
+  kind         CreditEntryKind
+  amountPaise  Int
+  paymentId    String?            @db.Uuid
+  allocationId String?            @db.Uuid
+  refundId     String?            @db.Uuid
+  reason       String?
+  createdBy    String
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+  patient      Patient            @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch       Branch             @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  payment      Payment?           @relation(fields: [tenantId, paymentId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  allocation   PaymentAllocation? @relation(fields: [tenantId, allocationId], references: [tenantId, id], onDelete: Restrict)
+  refund       Refund?            @relation(fields: [tenantId, refundId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, patientId, createdAt])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M3 Dentist compensation (ADR 0004 §7). Rules are effective-dated and immutable once created (only
+// closed); entries form an append-only ledger. Never silently change a historical commission basis.
+// ---------------------------------------------------------------------------------------------
+
+/// dentistUserId NULL = the default rule. One OPEN rule per (dentist-or-default, category-or-any) scope and no
+/// overlapping periods per scope (exclusion constraint). Precedence: dentist+category > dentist >
+/// default+category > default. Never deleted.
+model CommissionRule {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @db.Uuid
+  dentistUserId     String?
+  type              CommissionRuleType @default(PERCENT_OF_COLLECTED)
+  /// 0–10000 (basis points) for PERCENT_* types.
+  percentBp         Int?
+  /// Paise per procedure unit for FIXED_PER_PROCEDURE.
+  fixedPaise        Int?
+  serviceCategoryId String?            @db.Uuid
+  effectiveFrom     DateTime           @db.Date
+  /// Exclusive. NULL = open.
+  effectiveTo       DateTime?          @db.Date
+  note              String?
+  createdBy         String
+  createdAt         DateTime           @default(now())
+  endedBy           String?
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  serviceCategory   ServiceCategory?   @relation(fields: [tenantId, serviceCategoryId], references: [tenantId, id], onDelete: Restrict)
+  entries           CommissionEntry[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, dentistUserId])
+}
+
+/// Append-only commission ledger (UPDATE/DELETE revoked). amountPaise is signed: ACCRUAL +, REVERSAL −
+/// (refund), ADJUSTMENT ±, SETTLEMENT − (pay-out). baseAmountPaise is the (ex-tax) revenue the rule was applied to.
+/// The attributed dentist is copied from InvoiceLine.dentistUserId and never rewritten.
+model CommissionEntry {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  tenantId            String                    @db.Uuid
+  branchId            String                    @db.Uuid
+  /// IdP subject (not a FK, not member-guarded: a removed dentist still earns on old work).
+  dentistUserId       String
+  kind                CommissionEntryKind
+  amountPaise         Int
+  baseAmountPaise     Int                       @default(0)
+  ruleId              String?                   @db.Uuid
+  invoiceId           String?                   @db.Uuid
+  invoiceLineId       String?                   @db.Uuid
+  paymentAllocationId String?                   @db.Uuid
+  encounterId         String?                   @db.Uuid
+  settlementId        String?                   @db.Uuid
+  reason              String?
+  createdBy           String
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(3)
+  branch              Branch                    @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  rule                CommissionRule?           @relation(fields: [tenantId, ruleId], references: [tenantId, id], onDelete: Restrict)
+  invoice             Invoice?                  @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+  invoiceLine         InvoiceLine?              @relation(fields: [tenantId, invoiceId, invoiceLineId], references: [tenantId, invoiceId, id], onDelete: Restrict)
+  allocation          PaymentAllocation?        @relation(fields: [tenantId, paymentAllocationId], references: [tenantId, id], onDelete: Restrict)
+  encounter           Encounter?                @relation(fields: [tenantId, encounterId], references: [tenantId, id], onDelete: Restrict)
+  settlement          CommissionSettlement?     @relation("SettlementPayout", fields: [tenantId, settlementId], references: [tenantId, id], onDelete: Restrict)
+  settlementItem      CommissionSettlementItem?
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, dentistUserId, createdAt])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, paymentAllocationId])
+}
+
+/// Settlement run for one dentist and period [periodStart, periodEnd): DRAFT -> APPROVED -> PAID (trigger).
+/// No overlapping periods per dentist (exclusion constraint). Only a DRAFT may be discarded.
+model CommissionSettlement {
+  id               String                     @id @default(uuid()) @db.Uuid
+  tenantId         String                     @db.Uuid
+  dentistUserId    String
+  periodStart      DateTime                   @db.Date
+  periodEnd        DateTime                   @db.Date
+  status           SettlementStatus           @default(DRAFT)
+  /// Σ item amounts (frozen at approval).
+  totalPaise       Int                        @default(0)
+  createdBy        String
+  createdAt        DateTime                   @default(now())
+  approvedBy       String?
+  approvedAt       DateTime?                  @db.Timestamptz(3)
+  paidBy           String?
+  paidAt           DateTime?                  @db.Timestamptz(3)
+  paymentReference String?
+  notes            String?
+  tenant           Tenant                     @relation(fields: [tenantId], references: [id])
+  items            CommissionSettlementItem[]
+  payoutEntries    CommissionEntry[]          @relation("SettlementPayout")
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, dentistUserId, status])
+}
+
+/// Which ledger entries a settlement covers; an entry is settled at most once (unique). Deletable only
+/// while the parent settlement is DRAFT.
+model CommissionSettlementItem {
+  id           String               @id @default(uuid()) @db.Uuid
+  tenantId     String               @db.Uuid
+  settlementId String               @db.Uuid
+  entryId      String               @db.Uuid
+  amountPaise  Int
+  settlement   CommissionSettlement @relation(fields: [tenantId, settlementId], references: [tenantId, id], onDelete: Restrict)
+  entry        CommissionEntry      @relation(fields: [tenantId, entryId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, entryId])
+  @@index([tenantId])
+  @@index([tenantId, settlementId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M3 Inventory (ADR 0004 §8): items, suppliers, receipts, append-only stock ledger with a
+// trigger-maintained balance (weighted-average cost), inter-branch transfers.
+// ---------------------------------------------------------------------------------------------
+
+model InventoryItem {
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @db.Uuid
+  /// Upper-case (DB CHECK), unique per tenant.
+  sku           String
+  name          String
+  category      String?
+  unit          InventoryUnit       @default(PIECE)
+  /// Low-stock when a branch balance is at or below this.
+  reorderLevel  Decimal             @default(0) @db.Decimal(14, 3)
+  costingMethod CostingMethod       @default(WEIGHTED_AVERAGE)
+  /// Track batch number / expiry on receipts and consume first-expiry-first-out.
+  tracksBatches Boolean             @default(false)
+  /// Allow the branch balance to go below zero (otherwise the stock trigger refuses).
+  allowOverdraw Boolean             @default(false)
+  active        Boolean             @default(true)
+  createdBy     String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @default(now()) @updatedAt
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  movements     StockMovement[]
+  balances      StockBalance[]
+  transferLines StockTransferLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, active])
+}
+
+model Supplier {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @db.Uuid
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  gstin       String?
+  address     String?
+  notes       String?
+  active      Boolean        @default(true)
+  createdBy   String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @default(now()) @updatedAt
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  receipts    StockReceipt[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+/// A simple purchase receipt (header). The stock lines are RECEIPT StockMovement rows. Append-only.
+model StockReceipt {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @db.Uuid
+  branchId       String          @db.Uuid
+  supplierId     String?         @db.Uuid
+  /// Supplier's invoice / challan number.
+  reference      String?
+  receivedOn     DateTime        @db.Date
+  totalCostPaise Int?
+  notes          String?
+  createdBy      String
+  createdAt      DateTime        @default(now())
+  branch         Branch          @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  supplier       Supplier?       @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
+  movements      StockMovement[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, branchId, id])
+  @@index([tenantId])
+  @@index([tenantId, branchId, receivedOn])
+}
+
+/// Append-only stock ledger (UPDATE/DELETE revoked). quantity is signed (RECEIPT/TRANSFER_IN +, CONSUMPTION/
+/// TRANSFER_OUT/WASTE −, ADJUSTMENT ±). A BEFORE INSERT trigger updates StockBalance atomically, refuses a
+/// negative balance unless the item allows overdraw, fills unitCostPaise for outflows from the weighted
+/// average, and sets balanceAfter.
+model StockMovement {
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @db.Uuid
+  branchId          String            @db.Uuid
+  itemId            String            @db.Uuid
+  kind              StockMovementKind
+  quantity          Decimal           @db.Decimal(14, 3)
+  /// Paise per unit (fractions allowed: ₹0.37/ml). Required on RECEIPT; filled by the trigger otherwise.
+  unitCostPaise     Decimal?          @db.Decimal(14, 4)
+  batchNo           String?
+  expiryDate        DateTime?         @db.Date
+  receiptId         String?           @db.Uuid
+  transferId        String?           @db.Uuid
+  procedureRecordId String?           @db.Uuid
+  /// Free link for other sources (e.g. "STOCK_COUNT").
+  refType           String?
+  refId             String?
+  /// Required for ADJUSTMENT and WASTE (DB CHECK).
+  reason            String?
+  createdBy         String
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  /// Branch balance right after this movement (trigger).
+  balanceAfter      Decimal?          @db.Decimal(14, 3)
+  branch            Branch            @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  item              InventoryItem     @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Restrict)
+  receipt           StockReceipt?     @relation(fields: [tenantId, branchId, receiptId], references: [tenantId, branchId, id], onDelete: Restrict)
+  transfer          StockTransfer?    @relation(fields: [tenantId, transferId], references: [tenantId, id], onDelete: Restrict)
+  procedureRecord   ProcedureRecord?  @relation(fields: [tenantId, procedureRecordId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, branchId, itemId, createdAt])
+  @@index([tenantId, branchId, itemId, expiryDate])
+  @@index([tenantId, procedureRecordId])
+  @@index([tenantId, transferId])
+}
+
+/// Current stock per (branch, item) — written ONLY by the StockMovement trigger (SECURITY DEFINER; the app
+/// role has SELECT only). avgUnitCostPaise is the weighted-average cost.
+model StockBalance {
+  id               String        @id @default(uuid()) @db.Uuid
+  tenantId         String        @db.Uuid
+  branchId         String        @db.Uuid
+  itemId           String        @db.Uuid
+  quantity         Decimal       @default(0) @db.Decimal(14, 3)
+  avgUnitCostPaise Decimal       @default(0) @db.Decimal(14, 4)
+  updatedAt        DateTime      @default(now()) @updatedAt
+  branch           Branch        @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  item             InventoryItem @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, branchId, itemId])
+  @@index([tenantId])
+  @@index([tenantId, itemId])
+}
+
+/// Inter-branch transfer: IN_TRANSIT (TRANSFER_OUT rows written at send) -> RECEIVED (TRANSFER_IN rows at
+/// receipt). Never deleted. Lines are written once; receivedQuantity is set on receipt.
+model StockTransfer {
+  id           String              @id @default(uuid()) @db.Uuid
+  tenantId     String              @db.Uuid
+  fromBranchId String              @db.Uuid
+  toBranchId   String              @db.Uuid
+  status       StockTransferStatus @default(IN_TRANSIT)
+  notes        String?
+  sentBy       String
+  sentAt       DateTime            @default(now()) @db.Timestamptz(3)
+  receivedBy   String?
+  receivedAt   DateTime?           @db.Timestamptz(3)
+  fromBranch   Branch              @relation("TransferFrom", fields: [tenantId, fromBranchId], references: [tenantId, id], onDelete: Restrict)
+  toBranch     Branch              @relation("TransferTo", fields: [tenantId, toBranchId], references: [tenantId, id], onDelete: Restrict)
+  lines        StockTransferLine[]
+  movements    StockMovement[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, fromBranchId, status])
+  @@index([tenantId, toBranchId, status])
+}
+
+model StockTransferLine {
+  id               String        @id @default(uuid()) @db.Uuid
+  tenantId         String        @db.Uuid
+  transferId       String        @db.Uuid
+  itemId           String        @db.Uuid
+  quantity         Decimal       @db.Decimal(14, 3)
+  batchNo          String?
+  expiryDate       DateTime?     @db.Date
+  /// Weighted-average cost at the source when sent (carried to the destination as the receipt cost).
+  unitCostPaise    Decimal?      @db.Decimal(14, 4)
+  receivedQuantity Decimal?      @db.Decimal(14, 3)
+  transfer         StockTransfer @relation(fields: [tenantId, transferId], references: [tenantId, id], onDelete: Restrict)
+  item             InventoryItem @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, transferId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M3 Notifications (ADR 0004 §9): versioned templates, outbox, delivery events, recall intervals.
+// ---------------------------------------------------------------------------------------------
+
+/// code + channel + language identify a template; its text lives in append-only versions. Deactivated,
+/// never deleted. Channels reuse the M1 `CommChannel` enum.
+model NotificationTemplate {
+  id             String                        @id @default(uuid()) @db.Uuid
+  tenantId       String                        @db.Uuid
+  /// Upper-case (DB CHECK), e.g. "APPT_REMINDER_24H".
+  code           String
+  channel        CommChannel
+  /// BCP-47-ish, lower-case ("en", "hi").
+  language       String                        @default("en")
+  purpose        CommPurpose                   @default(TRANSACTIONAL)
+  name           String
+  active         Boolean                       @default(true)
+  currentVersion Int                           @default(0)
+  createdBy      String
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @default(now()) @updatedAt
+  tenant         Tenant                        @relation(fields: [tenantId], references: [id])
+  versions       NotificationTemplateVersion[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code, channel, language])
+  @@index([tenantId])
+}
+
+/// Append-only (UPDATE/DELETE revoked). `{{placeholder}}` body; an outbox row pins the exact version.
+model NotificationTemplateVersion {
+  id                  String               @id @default(uuid()) @db.Uuid
+  tenantId            String               @db.Uuid
+  templateId          String               @db.Uuid
+  version             Int
+  subject             String?
+  body                String
+  /// Provider-approved template name (WhatsApp templates must be pre-approved).
+  providerTemplateRef String?
+  createdBy           String
+  createdAt           DateTime             @default(now())
+  template            NotificationTemplate @relation(fields: [tenantId, templateId], references: [tenantId, id], onDelete: Restrict)
+  outbox              NotificationOutbox[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, templateId, version])
+  @@index([tenantId])
+}
+
+/// One row per message to send (or deliberately not sent). `toAddress` is the normalised phone / e-mail —
+/// personal data needed to send, protected by RLS and never copied into job payloads, logs or audit.
+/// Identity/content columns are immutable; the worker only advances status/attempt/provider columns (trigger).
+model NotificationOutbox {
+  id                String                      @id @default(uuid()) @db.Uuid
+  tenantId          String                      @db.Uuid
+  branchId          String?                     @db.Uuid
+  patientId         String?                     @db.Uuid
+  channel           CommChannel
+  purpose           CommPurpose
+  templateCode      String
+  templateVersionId String                      @db.Uuid
+  toAddress         String
+  /// Placeholder values for the template (display strings only — no clinical content).
+  variables         Json                        @default("{}")
+  status            NotificationStatus          @default(QUEUED)
+  attempts          Int                         @default(0)
+  /// Not before (reminders are scheduled; quiet hours push it to the next allowed time).
+  scheduledFor      DateTime                    @default(now()) @db.Timestamptz(3)
+  nextAttemptAt     DateTime?                   @db.Timestamptz(3)
+  idempotencyKey    String
+  provider          String?
+  providerMessageId String?
+  /// Provider-reported delivery state (e.g. delivered, read, failed).
+  deliveryStatus    String?
+  deliveredAt       DateTime?                   @db.Timestamptz(3)
+  /// Error code / short message without personal data (≤ 500 chars, DB CHECK).
+  lastError         String?
+  /// What triggered it, e.g. "appointment.reminder.24h" | "invoice.issued".
+  source            String
+  refType           String?
+  refId             String?
+  actorId           String
+  createdAt         DateTime                    @default(now()) @db.Timestamptz(3)
+  sentAt            DateTime?                   @db.Timestamptz(3)
+  updatedAt         DateTime                    @default(now()) @updatedAt
+  branch            Branch?                     @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient           Patient?                    @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  templateVersion   NotificationTemplateVersion @relation(fields: [tenantId, templateVersionId], references: [tenantId, id], onDelete: Restrict)
+  deliveryEvents    NotificationDeliveryEvent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@index([tenantId, status, scheduledFor])
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, provider, providerMessageId])
+  @@index([tenantId, refType, refId])
+}
+
+/// Append-only log of provider delivery receipts (webhook) for one outbox row.
+model NotificationDeliveryEvent {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @db.Uuid
+  outboxId          String             @db.Uuid
+  status            String
+  providerMessageId String?
+  errorCode         String?
+  occurredAt        DateTime           @default(now()) @db.Timestamptz(3)
+  outbox            NotificationOutbox @relation(fields: [tenantId, outboxId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, outboxId, occurredAt])
+}
+
+/// Recall reminder interval per service (days after a completed procedure). Deactivated, never deleted.
+model RecallSetting {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  serviceId    String   @db.Uuid
+  intervalDays Int
+  active       Boolean  @default(true)
+  updatedBy    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+  service      Service  @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, serviceId])
   @@index([tenantId])
 }

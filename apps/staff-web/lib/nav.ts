@@ -1,21 +1,26 @@
 import type { Permission } from "@dentalos/contracts";
 import type { NavItem } from "@dentalos/ui";
 import {
+  Armchair,
   BarChart3,
   Boxes,
   Building2,
   CalendarDays,
   ClipboardList,
+  Clock,
   CopyCheck,
   Inbox,
   IndianRupee,
   LayoutDashboard,
+  MessageSquare,
   Palette,
   Receipt,
   Settings,
   Stethoscope,
+  UserCheck,
   UserCog,
   Users,
+  Wallet,
 } from "lucide-react";
 
 export interface PermNavItem extends NavItem {
@@ -32,7 +37,13 @@ export const NAV: PermNavItem[] = [
     icon: CalendarDays,
     section: "Front desk",
     permission: "appointment:read",
-    milestone: "M2",
+  },
+  {
+    label: "Check-in queue",
+    href: "/front-desk",
+    icon: UserCheck,
+    section: "Front desk",
+    permission: "appointment:read",
   },
   {
     label: "Patients",
@@ -49,6 +60,13 @@ export const NAV: PermNavItem[] = [
     permission: "patient:read",
   },
   {
+    label: "Messages",
+    href: "/notifications",
+    icon: MessageSquare,
+    section: "Front desk",
+    permission: "comms:read",
+  },
+  {
     label: "Duplicate review",
     href: "/patients/duplicates",
     icon: CopyCheck,
@@ -61,7 +79,6 @@ export const NAV: PermNavItem[] = [
     icon: Stethoscope,
     section: "Care",
     permission: "clinical:read",
-    milestone: "M2",
   },
   {
     label: "Billing",
@@ -69,7 +86,13 @@ export const NAV: PermNavItem[] = [
     icon: Receipt,
     section: "Business",
     permission: "billing:read",
-    milestone: "M3",
+  },
+  {
+    label: "Payments",
+    href: "/payments",
+    icon: IndianRupee,
+    section: "Business",
+    permission: "billing:read",
   },
   {
     label: "Inventory",
@@ -77,7 +100,13 @@ export const NAV: PermNavItem[] = [
     icon: Boxes,
     section: "Business",
     permission: "inventory:read",
-    milestone: "M3",
+  },
+  {
+    label: "Compensation",
+    href: "/compensation",
+    icon: Wallet,
+    section: "Business",
+    permission: "compensation:read",
   },
   {
     label: "Reports",
@@ -114,6 +143,34 @@ export const NAV: PermNavItem[] = [
     icon: Stethoscope,
     section: "Administration",
     permission: "staff:read",
+  },
+  {
+    label: "Chairs",
+    href: "/admin/chairs",
+    icon: Armchair,
+    section: "Administration",
+    permission: "schedule:manage",
+  },
+  {
+    label: "Working hours",
+    href: "/admin/hours",
+    icon: Clock,
+    section: "Administration",
+    permission: "schedule:manage",
+  },
+  {
+    label: "Billing settings",
+    href: "/admin/billing",
+    icon: Receipt,
+    section: "Administration",
+    permission: "billing:read",
+  },
+  {
+    label: "Messaging",
+    href: "/admin/messaging",
+    icon: MessageSquare,
+    section: "Administration",
+    permission: "comms:templates",
   },
   {
     label: "Service catalogue",

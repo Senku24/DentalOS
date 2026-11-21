@@ -15,7 +15,13 @@ export function ShellFrame({ children }: { children: ReactNode }) {
     principal.orgWide ? ALL_BRANCHES : (principal.branchScope[0] ?? ""),
   );
 
-  const nav = useMemo(() => NAV.filter((n) => !n.permission || can(principal, n.permission)), []);
+  const nav = useMemo(
+    () =>
+      NAV.filter(
+        (n) => !n.permission || can(principal, n.permission, { ownerUserId: principal.userId }),
+      ),
+    [],
+  );
   const branches = useMemo(
     () =>
       principal.orgWide

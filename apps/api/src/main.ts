@@ -10,7 +10,10 @@ async function bootstrap() {
   const { PinoNestLogger, logger, requestLogger } = await import("./observability/logger");
   const { tracingMiddleware } = await import("./observability/tracing");
 
-  const app = await NestFactory.create(AppModule, { logger: new PinoNestLogger() });
+  // rawBody: the exact request bytes are kept on `req.rawBody` (RawBodyRequest<Request>) next to the parsed JSON.
+  // Public webhook routes (payment gateway, delivery receipts) must verify their HMAC over THESE bytes, never over
+  // a re-serialised body (ADR 0004 §5, §9.2); secrets come from `webhookSecrets()` in @dentalos/config.
+  const app = await NestFactory.create(AppModule, { logger: new PinoNestLogger(), rawBody: true });
   app.use(tracingMiddleware);
   app.use(requestLogger);
   app.enableShutdownHooks(); // graceful shutdown on SIGTERM (PRD 6.2)

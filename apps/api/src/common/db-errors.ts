@@ -66,3 +66,113 @@ export function notAMember(e: unknown): string | null {
 export function isUniqueViolation(e: unknown): boolean {
   return (e as { code?: unknown } | null)?.code === "P2002" || text(e).includes("23505");
 }
+
+// ---------------------------------------------------------------------------------------------
+// M3 business operations (migration 0008_m3_business_ops, docs/adr/0004-business-operations-rules.md)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Stable codes raised by the 0008 triggers (SQLSTATE P0001, message prefix `<code>:`). Answer them as
+ * `{ error: <code> }` with the status from `M3_GUARD_HTTP` (409 unless noted). Validate in the service first
+ * for a clearer message; the DB is the final authority under races.
+ *   invoice_*          issued invoices are immutable; balance/status follow allocations and notes only
+ *   payment_*          money columns frozen; allocation needs a RECORDED payment
+ *   allocation_*       a payment cannot be spent twice
+ *   refund_*           caps, reversal pairing, state machine
+ *   credit_insufficient  patient advance would go negative
+ *   credit_link_mismatch the advance ledger is tied to a payment / allocation / advance refund (amount, patient)
+ *   commission_link_mismatch accrual / reversal / payout does not match its allocation, invoice line or settlement
+ *   commission_rule_immutable, settlement_*  rules are closed never edited; settlement state machine
+ *   insufficient_stock, stock_*  stock ledger / balance trigger
+ *   notification_state outbox identity is frozen; only QUEUED moves
+ *   tenant_mismatch    a SECURITY DEFINER / counter function was called for another tenant (a bug: 500)
+ */
+export const M3_GUARD_CODES = [
+  "invoice_immutable",
+  "invoice_invalid_transition",
+  "invoice_not_voidable",
+  "invoice_totals_mismatch",
+  "invoice_not_payable",
+  "invoice_not_adjustable",
+  "invoice_overpaid",
+  "payment_immutable",
+  "payment_not_recorded",
+  "allocation_exceeds_payment",
+  "refund_immutable",
+  "refund_exceeds_payment",
+  "refund_exceeds_allocation",
+  "refund_reversal_mismatch",
+  "credit_insufficient",
+  "credit_link_mismatch",
+  "commission_link_mismatch",
+  "commission_rule_immutable",
+  "settlement_state",
+  "settlement_total_mismatch",
+  "settlement_item_mismatch",
+  "insufficient_stock",
+  "stock_item_missing",
+  "stock_transfer_state",
+  "notification_state",
+  "tenant_mismatch",
+] as const;
+export type M3GuardCode = (typeof M3_GUARD_CODES)[number];
+
+/** HTTP status per code: everything is a 409 conflict with current state, except these. */
+export const M3_GUARD_HTTP: Readonly<Partial<Record<M3GuardCode, 400 | 500>>> = {
+  stock_item_missing: 400,
+  tenant_mismatch: 500,
+};
+
+/** The M3 trigger code in a database error, or null. */
+export function m3GuardError(e: unknown): M3GuardCode | null {
+  const t = text(e);
+  if (!t.includes("P0001")) return null;
+  return M3_GUARD_CODES.find((c) => t.includes(`${c}:`)) ?? null;
+}
+
+/** Name of the violated CHECK constraint (SQLSTATE 23514), e.g. "Invoice_balance_chk", or null. */
+export function checkViolation(e: unknown): string | null {
+  const t = text(e);
+  if (!t.includes("23514") && !t.includes("check constraint")) return null;
+  return /check constraint "?([A-Za-z0-9_]+)"?/.exec(t)?.[1] ?? "unknown";
+}
+
+/** Foreign-key violation (SQLSTATE 23503): the composite FKs that bind patient / branch across entities. */
+export function foreignKeyViolation(e: unknown): string | null {
+  const t = text(e);
+  if (!t.includes("23503") && !t.includes("foreign key constraint")) return null;
+  return /foreign key constraint "?([A-Za-z0-9_]+)"?/.exec(t)?.[1] ?? "unknown";
+}
+
+/** Overlapping commission-rule scope or settlement period (SQLSTATE 23P01). */
+export function commissionOverlap(e: unknown): "rule" | "settlement" | null {
+  const t = text(e);
+  if (t.includes("CommissionRule_scope_no_overlap") || t.includes("CommissionRule_open_key"))
+    return "rule";
+  if (t.includes("CommissionSettlement_no_overlap")) return "settlement";
+  return null;
+}
+
+/**
+ * The app role lacks the privilege (SQLSTATE 42501): an append-only table was UPDATEd / DELETEd, or
+ * StockBalance was written directly. Always a programming error — log and answer 500.
+ */
+export function privilegeDenied(e: unknown): boolean {
+  const t = text(e);
+  return t.includes("42501") || t.includes("permission denied for table");
+}
+
+/**
+ * Serialization failure (40001) or deadlock (40P01): the whole transaction was rolled back and is safe to run again.
+ * Retry the unit of work (a few attempts with jitter) and only then answer 409 `retry_later` / 503. The M3 guards lock
+ * Payment, then Invoice (FOR UPDATE) consistently, so this is rare — but two writers racing for one row can still hit it.
+ */
+export function isRetryableTxError(e: unknown): boolean {
+  const t = text(e);
+  return (
+    t.includes("40P01") ||
+    t.includes("40001") ||
+    t.includes("deadlock detected") ||
+    t.includes("could not serialize access")
+  );
+}
