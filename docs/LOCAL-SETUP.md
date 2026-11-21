@@ -18,6 +18,7 @@ bun run db:up              # start Postgres (port 5433) and S3 storage (port 833
 bun run db:migrate         # apply database migrations (superuser; uses ADMIN_DATABASE_URL)
 bun run db:generate        # generate the Prisma client
 bun run db:seed            # demo data + writes the dev login (tenant, branch, token) into .env
+bun run db:seed -- --role=MANAGER   # same, signed in as another role
 ```
 
 ## 3. Run (three terminals)
@@ -26,8 +27,10 @@ bun run dev:api            # API on http://localhost:3001  (health: /health/live
 bun run dev:web            # Staff web on http://localhost:3000
 bun run dev:worker         # optional: background job worker
 ```
-Open http://localhost:3000 — signed in as the seeded dentist (`NEXT_PUBLIC_DEV_ROLE=DENTIST`).
-`NEXT_PUBLIC_DEV_ROLE` only changes what the UI shows. What the API allows is decided by the seeded user's real role (DENTIST).
+Open http://localhost:3000.
+The login role defaults to OWNER (everything except clinical writes). Switch with `bun run db:seed -- --role=<OWNER|MANAGER|DENTIST|RECEPTIONIST|ACCOUNTANT>` and restart `dev:web`: it rewrites the dev login lines in `.env` with that role's user and token. What the API allows is decided by that user's real role; `NEXT_PUBLIC_DEV_ROLE` only shapes the UI.
+
+Docker Desktop must be running for `db:up`, `db:migrate` and `db:seed`.
 
 ## 4. Other commands
 ```bash

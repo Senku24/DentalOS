@@ -358,6 +358,15 @@ async function seedTenant(tag: "A" | "B", timezone: string) {
   };
 }
 
+/** One login per role in the shared UI clinic; `--role=` picks which one the staff-web dev login uses. */
+const UI_USERS: Record<string, { userId: string; name: string }> = {
+  OWNER: { userId: "ui-owner", name: "Owner (demo)" },
+  MANAGER: { userId: "ui-manager", name: "Manager (demo)" },
+  DENTIST: { userId: UI_DENTIST, name: "Asha Verma" },
+  RECEPTIONIST: { userId: "ui-receptionist", name: "Receptionist (demo)" },
+  ACCOUNTANT: { userId: "ui-accountant", name: "Accountant (demo)" },
+};
+
 async function seedUiTenant() {
   const tenantId = await tenant("Dev UI clinic (shared)", UI_TENANT_ID);
   await withTenant(
@@ -372,18 +381,48 @@ async function seedUiTenant() {
       }),
     { actorId: SEED_ACTOR },
   );
-  await member(tenantId, {
-    userId: UI_DENTIST,
-    roles: ["DENTIST"],
-    branchScope: [UI_BRANCH_ID],
-    displayName: "Asha Verma",
-    email: "dev-user@demo.test",
-  });
+  for (const [role, u] of Object.entries(UI_USERS)) {
+    const orgWide = role === "OWNER" || role === "ACCOUNTANT";
+    await member(tenantId, {
+      userId: u.userId,
+      roles: [role as Role],
+      orgWide,
+      branchScope: orgWide ? [] : [UI_BRANCH_ID],
+      displayName: u.name,
+      email: `${u.userId}@demo.test`,
+    });
+  }
   const patients = await withTenant(
     app,
     tenantId,
     async (tx) => {
       await assignment(tx, tenantId, UI_DENTIST, UI_BRANCH_ID);
+      await chair(tx, tenantId, UI_BRANCH_ID, "OP-1");
+      await chair(tx, tenantId, UI_BRANCH_ID, "OP-2");
+      await branchHours(tx, tenantId, UI_BRANCH_ID);
+      for (const s of [
+        { code: "UI-CONSULT", name: "Consultation", durationMin: 15, basePricePaise: 50_000 },
+        {
+          code: "UI-SCALING",
+          name: "Scaling and polishing",
+          durationMin: 30,
+          basePricePaise: 120_000,
+        },
+        { code: "UI-FILL", name: "Composite filling", durationMin: 30, basePricePaise: 150_000 },
+        {
+          code: "UI-RCT",
+          name: "Root canal treatment (molar)",
+          durationMin: 60,
+          basePricePaise: 800_000,
+        },
+        {
+          code: "UI-XRAY",
+          name: "Intra-oral X-ray (IOPA)",
+          durationMin: 10,
+          basePricePaise: 30_000,
+        },
+      ])
+        await service(tx, tenantId, s);
       const out: SeededPatient[] = [];
       for (let n = 1; n <= 3; n++)
         out.push(await patient(tx, tenantId, UI_BRANCH_ID, n, FIRST_NAMES[n] as string, "UI"));
@@ -410,7 +449,11 @@ async function mintTokens(users: string[]): Promise<Record<string, string> | und
 }
 
 /** Updates the NEXT_PUBLIC_DEV_* lines of the repo-root .env in place (only those keys). */
-function writeDevEnv(ui: { id: string; branchId: string; dentist: string }, token?: string) {
+function writeDevEnv(
+  ui: { id: string; branchId: string },
+  login: { role: string; userId: string },
+  token?: string,
+) {
   const file = new URL("../../../.env", import.meta.url).pathname;
   if (!existsSync(file)) {
     console.error(`No .env at ${file}: copy .env.example to .env first.`);
@@ -421,10 +464,10 @@ function writeDevEnv(ui: { id: string; branchId: string; dentist: string }, toke
     return;
   }
   const values: Record<string, string> = {
-    NEXT_PUBLIC_DEV_ROLE: "DENTIST",
+    NEXT_PUBLIC_DEV_ROLE: login.role,
     NEXT_PUBLIC_DEV_TENANT_ID: ui.id,
     NEXT_PUBLIC_DEV_BRANCH_ID: ui.branchId,
-    NEXT_PUBLIC_DEV_USER_ID: ui.dentist,
+    NEXT_PUBLIC_DEV_USER_ID: login.userId,
     NEXT_PUBLIC_DEV_TOKEN: token,
   };
   const seen = new Set<string>();
@@ -446,22 +489,31 @@ async function main() {
   const A = await seedTenant("A", timezone);
   const B = await seedTenant("B", timezone);
   const ui = await seedUiTenant();
+  const roleArg = process.argv
+    .find((a) => a.startsWith("--role="))
+    ?.slice(7)
+    .toUpperCase();
+  const role = roleArg ?? process.env.SEED_ROLE?.toUpperCase() ?? "OWNER";
+  const login = UI_USERS[role];
+  if (!login) throw new Error(`--role must be one of ${Object.keys(UI_USERS).join(", ")}`);
   const tokens = await mintTokens([
     ...Object.values(A.users),
     ...Object.values(B.users),
-    ui.dentist,
+    ...Object.values(UI_USERS).map((u) => u.userId),
   ]);
-  if (process.argv.includes("--write-env")) writeDevEnv(ui, tokens?.[ui.dentist]);
+  const loginToken = tokens?.[login.userId];
+  if (process.argv.includes("--write-env"))
+    writeDevEnv(ui, { role, userId: login.userId }, loginToken);
   if (ui.patients[0]) {
     process.stderr.write(
       [
         "",
         "# Paste into .env (repo root) for the staff-web dev login:",
-        "NEXT_PUBLIC_DEV_ROLE=DENTIST",
+        `NEXT_PUBLIC_DEV_ROLE=${role}`,
         `NEXT_PUBLIC_DEV_TENANT_ID=${ui.id}`,
         `NEXT_PUBLIC_DEV_BRANCH_ID=${ui.branchId}`,
-        `NEXT_PUBLIC_DEV_USER_ID=${ui.dentist}`,
-        `NEXT_PUBLIC_DEV_TOKEN=${tokens?.[ui.dentist] ?? "<set DEV_JWT_SECRET and re-run>"}`,
+        `NEXT_PUBLIC_DEV_USER_ID=${login.userId}`,
+        `NEXT_PUBLIC_DEV_TOKEN=${loginToken ?? "<set DEV_JWT_SECRET and re-run>"}`,
         "",
       ].join("\n"),
     );
