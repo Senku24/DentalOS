@@ -1,14 +1,23 @@
 import { Module } from "@nestjs/common";
+import { AnalyticsCache } from "./analytics-cache";
+import { AnalyticsQueryService } from "./analytics-query.service";
+import { AnalyticsController } from "./analytics.controller";
+import { AnalyticsService } from "./analytics.service";
 
 /**
- * M4 Analytics and dashboards (PRD 4.9). Owner: A1 (apps/api/src/analytics/** and the snapshot job in
- * apps/worker/src/handlers/analytics*). Staff routes: `@Can("analytics:org")` (org dashboard, comparison, org trends),
- * `@Can("analytics:branch")` (branch dashboard, trends, snapshots) and `analytics:self` (own performance). Every figure is a
- * SQL aggregation inside `withTenant` (RLS) intersected with the caller's branch scope; money fields are `null` without
- * `finance:report`. Metric definitions, periods, formulas, DTOs, cache-key helper and the fixed NL query catalogue are in
- * @dentalos/validation `analytics.ts` and docs/adr/0005-portal-analytics-ai-rules.md §4 — the AI module executes catalogue
- * queries by calling an exported service of THIS module (export it), never its own SQL.
- * See docs/M4-portal-analytics-ai.md.
+ * M4 Analytics and dashboards (PRD 4.9, ADR 0005 §4). Staff routes under `/analytics`: org dashboard + branch
+ * comparison (`analytics:org`), branch dashboard / snapshots (`analytics:branch` at the branch), trends, dentist
+ * performance (`analytics:branch`, or `analytics:self` for a dentist's own numbers). Every figure is a SQL aggregation
+ * inside `withTenant` (RLS) intersected with the caller's branch scope; money is `null` without `finance:report`;
+ * results are cached in memory per tenant + scope + params (TTL only).
+ *
+ * `AnalyticsQueryService` (the fixed NL-analytics catalogue behind one in-process `run()`) is EXPORTED so the AI module
+ * can inject it; this is the single cross-module import permitted for AI (see docs/M4-portal-analytics-ai.md).
+ * The daily snapshot job lives in apps/worker/src/handlers/analytics.
  */
-@Module({})
+@Module({
+  controllers: [AnalyticsController],
+  providers: [AnalyticsCache, AnalyticsService, AnalyticsQueryService],
+  exports: [AnalyticsQueryService],
+})
 export class AnalyticsModule {}
