@@ -329,6 +329,38 @@ enum StockTransferStatus {
   RECEIVED
 }
 
+/// M4 (ADR 0005): portal account lifecycle. INVITED -> ACTIVE (patient completed OTP) <-> SUSPENDED.
+enum PortalAccountStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+/// M4: why an OTP was issued. STEP_UP / CONTACT_VERIFY are bound to an ACTIVE account.
+enum PortalOtpPurpose {
+  LOGIN
+  ACTIVATE
+  STEP_UP
+  CONTACT_VERIFY
+}
+
+/// M4: AI drafts leave DRAFT exactly once (DB trigger), then are frozen.
+enum AiDraftStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+/// M4: the draft-producing approved capabilities (PRD 5.2 #1-#5; #6/#7 are not drafts).
+enum AiDraftKind {
+  PATIENT_HISTORY_SUMMARY
+  ENCOUNTER_SUMMARY
+  CLINICAL_NOTE
+  VOICE_NOTE
+  PLAN_EXPLANATION
+}
+
 enum NotificationStatus {
   QUEUED
   SENT
@@ -411,6 +443,9 @@ model Branch {
   transfersOut       StockTransfer[]           @relation("TransferFrom")
   transfersIn        StockTransfer[]           @relation("TransferTo")
   notifications      NotificationOutbox[]
+  aiDrafts           AiDraft[]
+  aiActivity         AiActivityLog[]
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -553,6 +588,8 @@ model Service {
   /// (1800 = 18%). Both optional; billing falls back to Tenant.settings.billing defaults (ADR 0004).
   hsnSac         String?
   gstRateBp      Int?
+  /// M4 (ADR 0005 §3): patients may book this service in the portal. Opt-in, default false.
+  portalBookable Boolean               @default(false)
   active         Boolean               @default(true)
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @default(now()) @updatedAt
@@ -670,6 +707,10 @@ model Patient {
   ledgerEntries              FinanceLedgerEntry[]
   creditEntries              PatientCreditEntry[]
   notifications              NotificationOutbox[]
+  portalAccount              PatientPortalAccount?
+  portalSignatures           PortalConsentSignature[]
+  aiDrafts                   AiDraft[]
+  aiActivity                 AiActivityLog[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, mrn])
@@ -769,17 +810,17 @@ model PatientAlert {
 }
 
 model PatientConsent {
-  id                 String                  @id @default(uuid()) @db.Uuid
-  tenantId           String                  @db.Uuid
-  patientId          String                  @db.Uuid
-  branchId           String?                 @db.Uuid
+  id                 String                   @id @default(uuid()) @db.Uuid
+  tenantId           String                   @db.Uuid
+  patientId          String                   @db.Uuid
+  branchId           String?                  @db.Uuid
   /// Consent type code — see @dentalos/validation `CONSENT_TYPES` (PRD 12.2: catalogue still evolving).
   type               String
   version            String
   status             ConsentStatus
   /// "DIGITAL" | "PAPER" | "VERBAL"
   method             String?
-  documentId         String?                 @db.Uuid
+  documentId         String?                  @db.Uuid
   capturedBy         String
   grantedAt          DateTime?
   withdrawnAt        DateTime?
@@ -787,18 +828,21 @@ model PatientConsent {
   /// M2: consent signed against a versioned template (and, for TREATMENT_PLAN, a plan version of
   /// the SAME patient — composite FK). Template-only types require templateVersionId (DB CHECK).
   /// Merges leave plan-linked consents on the original patient id (read via lineage).
-  templateVersionId  String?                 @db.Uuid
-  planVersionId      String?                 @db.Uuid
+  templateVersionId  String?                  @db.Uuid
+  planVersionId      String?                  @db.Uuid
   /// Who signed: the patient or a guardian/representative (minors). "SELF" | "GUARDIAN" | "REPRESENTATIVE".
   signerName         String?
   signerRelationship String?
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @default(now()) @updatedAt
-  patient            Patient                 @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  branch             Branch?                 @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
-  templateVersion    ConsentTemplateVersion? @relation(fields: [tenantId, templateVersionId], references: [tenantId, id], onDelete: Restrict)
-  planVersion        TreatmentPlanVersion?   @relation(fields: [tenantId, planVersionId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @default(now()) @updatedAt
+  patient            Patient                  @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch             Branch?                  @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  templateVersion    ConsentTemplateVersion?  @relation(fields: [tenantId, templateVersionId], references: [tenantId, id], onDelete: Restrict)
+  planVersion        TreatmentPlanVersion?    @relation(fields: [tenantId, planVersionId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  portalSignatures   PortalConsentSignature[]
 
+  /// M4: lets a portal e-signature prove it belongs to the consent's patient.
+  @@unique([tenantId, id, patientId])
   @@index([tenantId])
   @@index([tenantId, patientId])
   @@index([tenantId, templateVersionId])
@@ -823,30 +867,35 @@ model CommunicationPreference {
 
 /// Object lives in S3 under the tenant prefix (StorageService). Soft-deleted only.
 model PatientDocument {
-  id            String           @id @default(uuid()) @db.Uuid
-  tenantId      String           @db.Uuid
-  patientId     String           @db.Uuid
-  branchId      String           @db.Uuid
-  storageKey    String           @unique
-  fileName      String
-  contentType   String
-  sizeBytes     Int
-  sha256        String?
-  category      DocumentCategory @default(OTHER)
-  description   String?
-  status        DocumentStatus   @default(PENDING_UPLOAD)
-  uploadedBy    String
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @default(now()) @updatedAt
-  deletedBy     String?
-  deletedAt     DateTime?
-  deletedReason String?
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @db.Uuid
+  patientId       String           @db.Uuid
+  branchId        String           @db.Uuid
+  storageKey      String           @unique
+  fileName        String
+  contentType     String
+  sizeBytes       Int
+  sha256          String?
+  category        DocumentCategory @default(OTHER)
+  description     String?
+  status          DocumentStatus   @default(PENDING_UPLOAD)
+  uploadedBy      String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @default(now()) @updatedAt
+  deletedBy       String?
+  deletedAt       DateTime?
+  deletedReason   String?
   /// M2: X-ray / photo attached to an encounter of the SAME patient (composite FK). Merges leave
   /// encounter-attached documents on the original patient id with their encounter (read via lineage).
-  encounterId   String?          @db.Uuid
-  patient       Patient          @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  branch        Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
-  encounter     Encounter?       @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  encounterId     String?          @db.Uuid
+  /// M4 (ADR 0005 §3): the patient may see / download this document in the portal. Off by default;
+  /// only staff flip it (who + when recorded, DB CHECK). Never ID_PROOF.
+  portalVisible   Boolean          @default(false)
+  portalVisibleBy String?
+  portalVisibleAt DateTime?        @db.Timestamptz(3)
+  patient         Patient          @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch          Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  encounter       Encounter?       @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([tenantId, patientId])
@@ -1075,6 +1124,7 @@ model Encounter {
   invoices              Invoice[]
   invoiceLines          InvoiceLine[]
   commissionEntries     CommissionEntry[]
+  aiDrafts              AiDraft[]
 
   @@unique([tenantId, id])
   /// Lets clinical children prove they belong to the encounter's patient.
@@ -1094,15 +1144,21 @@ model ClinicalNote {
   kind        ClinicalNoteKind        @default(GENERAL)
   body        String
   authorId    String
+  /// M4 (ADR 0005 §5): true when the text started as an AI draft that the author reviewed and approved.
+  /// Set together with `aiDraftId` (DB CHECK); the draft is the evidence (provider, model, promptVersion).
+  aiAssisted  Boolean                 @default(false)
+  aiDraftId   String?                 @db.Uuid
   createdAt   DateTime                @default(now())
   updatedAt   DateTime                @default(now()) @updatedAt
   encounter   Encounter               @relation(fields: [tenantId, encounterId], references: [tenantId, id], onDelete: Restrict)
+  aiDraft     AiDraft?                @relation("AiDraftNotes", fields: [tenantId, aiDraftId], references: [tenantId, id], onDelete: Restrict)
   amendments  ClinicalNoteAmendment[]
 
   @@unique([tenantId, id])
   /// Lets an amendment prove its note belongs to the same encounter.
   @@unique([tenantId, encounterId, id])
   @@index([tenantId])
+  @@index([tenantId, aiDraftId])
 }
 
 /// Append-only correction of a SIGNED encounter (UPDATE/DELETE revoked; insert requires SIGNED).
@@ -1264,6 +1320,7 @@ model TreatmentPlanVersion {
   createdAt DateTime         @default(now())
   plan      TreatmentPlan    @relation(fields: [tenantId, planId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
   consents  PatientConsent[]
+  aiDrafts  AiDraft[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, id, patientId])
@@ -2196,4 +2253,298 @@ model RecallSetting {
 
   @@unique([tenantId, serviceId])
   @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M4 Patient portal (ADR 0005 §1-§3). A portal login is NEVER a staff Membership: it is a
+// PatientPortalAccount bound to exactly one patient of one tenant. Every portal read/write is scoped
+// by the patientId resolved from the verified session, never from client input.
+// ---------------------------------------------------------------------------------------------
+
+/// One account per patient per tenant. Created by staff (invite) only for a patient whose identity staff
+/// VERIFIED and who is not merged (trigger). Login destinations are normalised (@dentalos/validation
+/// normalisers) and NOT unique: one phone/e-mail may match several patients of the tenant (picker).
+model PatientPortalAccount {
+  id            String                   @id @default(uuid()) @db.Uuid
+  tenantId      String                   @db.Uuid
+  patientId     String                   @db.Uuid
+  status        PortalAccountStatus      @default(INVITED)
+  /// E.164 / lower-case e-mail the patient logs in with (at least one, CHECK).
+  loginPhone    String?
+  loginEmail    String?
+  /// Staff member (IdP subject) who sent the invite; must be a current member when written.
+  invitedBy     String
+  invitedAt     DateTime                 @default(now()) @db.Timestamptz(3)
+  activatedAt   DateTime?                @db.Timestamptz(3)
+  suspendedAt   DateTime?                @db.Timestamptz(3)
+  suspendedBy   String?
+  suspendReason String?
+  lastLoginAt   DateTime?                @db.Timestamptz(3)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @default(now()) @updatedAt
+  patient       Patient                  @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  otps          PortalOtp[]
+  sessions      PortalSession[]
+  signatures    PortalConsentSignature[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, patientId])
+  @@unique([tenantId, patientId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, loginPhone])
+  @@index([tenantId, loginEmail])
+}
+
+/// One-time code. Only HMAC hashes are stored (destination and code). Columns other than
+/// `attempts` / `consumedAt` are immutable (column grants + trigger); never deleted by the app role.
+/// `accountId` is NULL for LOGIN / ACTIVATE requests (resolved from the destination when verified).
+model PortalOtp {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @db.Uuid
+  accountId       String?               @db.Uuid
+  purpose         PortalOtpPurpose
+  channel         CommChannel
+  /// HMAC-SHA256(pepper, normalised destination), hex. Rate limits count rows per hash.
+  destinationHash String
+  /// HMAC-SHA256(pepper, otpId + ":" + code), hex.
+  codeHash        String
+  /// Step-up binding, e.g. "consent" / plan version id: the code only authorises that action.
+  subjectType     String?
+  subjectId       String?
+  attempts        Int                   @default(0)
+  maxAttempts     Int                   @default(5)
+  expiresAt       DateTime              @db.Timestamptz(3)
+  consumedAt      DateTime?             @db.Timestamptz(3)
+  /// HMAC of the caller IP (rate limit per IP); never the raw address.
+  ipHash          String?
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  account         PatientPortalAccount? @relation(fields: [tenantId, accountId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, destinationHash, createdAt])
+  @@index([tenantId, ipHash, createdAt])
+  @@index([tenantId, accountId, purpose, createdAt])
+}
+
+/// Refresh-token session with rotation. `refreshTokenHash` = SHA-256 of the opaque refresh token. A
+/// rotation inserts a successor (same `familyId`, `rotatedFromId`) and revokes the old row; presenting a
+/// revoked refresh token revokes the whole family (theft detection). `(tenantId, accountId, patientId)`
+/// binds the session to the account's patient. New sessions need an ACTIVE account (trigger).
+model PortalSession {
+  id               String               @id @default(uuid()) @db.Uuid
+  tenantId         String               @db.Uuid
+  accountId        String               @db.Uuid
+  patientId        String               @db.Uuid
+  familyId         String               @db.Uuid
+  rotatedFromId    String?              @db.Uuid
+  refreshTokenHash String               @unique
+  userAgentHash    String?
+  ipHash           String?
+  /// Last successful step-up OTP in this session (consent / plan approval need a recent one).
+  stepUpAt         DateTime?            @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  lastUsedAt       DateTime             @default(now()) @db.Timestamptz(3)
+  expiresAt        DateTime             @db.Timestamptz(3)
+  revokedAt        DateTime?            @db.Timestamptz(3)
+  revokedReason    String?
+  account          PatientPortalAccount @relation(fields: [tenantId, accountId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  rotatedFrom      PortalSession?       @relation("PortalSessionRotation", fields: [tenantId, rotatedFromId], references: [tenantId, id], onDelete: Restrict)
+  rotatedTo        PortalSession?       @relation("PortalSessionRotation")
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, rotatedFromId])
+  @@index([tenantId])
+  @@index([tenantId, accountId, revokedAt])
+  @@index([tenantId, familyId])
+}
+
+/// Evidence of a patient's typed-name e-signature given in the portal (append-only). The signed
+/// `PatientConsent` row is written by the normal consent path (method DIGITAL); this row proves who
+/// signed it, with which session, exactly which text (`bodySha256`) and after which OTP step-up
+/// (`signedAt - otpVerifiedAt <= 15 min`, CHECK). One signature per consent.
+model PortalConsentSignature {
+  id            String               @id @default(uuid()) @db.Uuid
+  tenantId      String               @db.Uuid
+  patientId     String               @db.Uuid
+  accountId     String               @db.Uuid
+  sessionId     String               @db.Uuid
+  consentId     String               @db.Uuid
+  typedName     String
+  /// SHA-256 (hex) of the exact consent text shown to the patient.
+  bodySha256    String
+  otpVerifiedAt DateTime             @db.Timestamptz(3)
+  signedAt      DateTime             @default(now()) @db.Timestamptz(3)
+  ipHash        String?
+  userAgentHash String?
+  account       PatientPortalAccount @relation(fields: [tenantId, accountId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  consent       PatientConsent       @relation(fields: [tenantId, consentId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  patient       Patient              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, consentId])
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+  @@index([tenantId, accountId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M4 AI (ADR 0005 §5). Provider-agnostic; every output is an AiDraft that a human reviews.
+// ---------------------------------------------------------------------------------------------
+
+/// Per tenant per capability switch. No row = disabled (default off). `allowedRoles` never contains PATIENT.
+/// `monthlyQuota` NULL = the plan default resolved by the service; 0 = no calls.
+model AiSetting {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  /// @dentalos/validation `AI_CAPABILITIES` (text so the catalogue can grow without a migration).
+  capability    String
+  enabled       Boolean  @default(false)
+  allowedRoles  Role[]   @default([])
+  monthlyQuota  Int?
+  /// When true the activity log may keep prompt/response content for this capability (default: never).
+  retainContent Boolean  @default(false)
+  updatedBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, capability])
+  @@index([tenantId])
+}
+
+/// Monthly usage counter per capability; the service upserts with increments inside the call's transaction.
+/// `month` = first day of the month in the tenant's default time zone (CHECK day = 1).
+model AiUsage {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @db.Uuid
+  month            DateTime @db.Date
+  capability       String
+  requestCount     Int      @default(0)
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, month, capability])
+  @@index([tenantId])
+}
+
+/// Append-only (UPDATE/DELETE revoked) record of AI activity (PRD 5.7): who, scope, feature, provider /
+/// model, action, approval, outcome, token counts. Prompt / response content is NOT stored unless the
+/// capability's `retainContent` is on (then `content`).
+model AiActivityLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @db.Uuid
+  /// Staff IdP subject, or "system" for jobs. Not a FK (removed members keep their history).
+  actorId          String
+  /// "ORG" | "BRANCH" | "PATIENT": the permitted scope the data was retrieved under.
+  scope            String
+  branchId         String?  @db.Uuid
+  patientId        String?  @db.Uuid
+  capability       String
+  provider         String
+  model            String
+  /// "generate" | "transcribe" | "query" | "summarise" | "approve" | "reject" | "expire" | "proposal" | "refuse"
+  action           String
+  draftId          String?  @db.Uuid
+  /// "APPROVED" | "REJECTED" | null (nothing to approve yet).
+  approval         String?
+  /// "success" | "refused" | "error" | "quota_exceeded" | "disabled" | "denied"
+  outcome          String
+  errorCode        String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  latencyMs        Int?
+  /// Whether the prompt was de-identified before leaving the platform.
+  deidentified     Boolean  @default(false)
+  content          Json?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  branch           Branch?  @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  patient          Patient? @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  draft            AiDraft? @relation(fields: [tenantId, draftId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, capability, createdAt])
+  @@index([tenantId, actorId, createdAt])
+}
+
+/// AI output awaiting human review. DRAFT -> APPROVED | REJECTED | EXPIRED exactly once (trigger
+/// `ai_draft_guard`); after that everything is frozen. `metadata` carries { provider, model, promptVersion }
+/// (CHECK) for the visible "AI-generated" label. Approving a CLINICAL_NOTE / VOICE_NOTE draft requires the
+/// resulting ClinicalNote rows (`ClinicalNote.aiDraftId`) written by the approving dentist in the same
+/// transaction; a signed encounter refuses them (M2 trigger).
+model AiDraft {
+  id                  String                @id @default(uuid()) @db.Uuid
+  tenantId            String                @db.Uuid
+  kind                AiDraftKind
+  /// "patient" | "encounter" | "plan_version" | "appointment" | "analytics"
+  subjectType         String
+  subjectId           String
+  patientId           String?               @db.Uuid
+  branchId            String                @db.Uuid
+  encounterId         String?               @db.Uuid
+  planVersionId       String?               @db.Uuid
+  status              AiDraftStatus         @default(DRAFT)
+  /// Per-kind JSON shape (@dentalos/validation `aiDraftContent`).
+  content             Json
+  metadata            Json
+  createdBy           String
+  createdAt           DateTime              @default(now()) @db.Timestamptz(3)
+  editedBy            String?
+  editedAt            DateTime?             @db.Timestamptz(3)
+  reviewedBy          String?
+  reviewedAt          DateTime?             @db.Timestamptz(3)
+  reviewNote          String?
+  /// e.g. "ClinicalNote" + the anchor note id (the first note written on approval).
+  resultingRecordType String?
+  resultingRecordId   String?               @db.Uuid
+  expiresAt           DateTime              @db.Timestamptz(3)
+  updatedAt           DateTime              @default(now()) @updatedAt
+  patient             Patient?              @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  branch              Branch                @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  encounter           Encounter?            @relation(fields: [tenantId, encounterId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  planVersion         TreatmentPlanVersion? @relation(fields: [tenantId, planVersionId, patientId], references: [tenantId, id, patientId], onDelete: Restrict)
+  notes               ClinicalNote[]        @relation("AiDraftNotes")
+  activity            AiActivityLog[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, patientId, kind])
+  @@index([tenantId, encounterId])
+  @@index([tenantId, planVersionId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// M4 Analytics (ADR 0005 §4)
+// ---------------------------------------------------------------------------------------------
+
+/// Daily branch summary written by the snapshot job: numbers from the analytics queries + an optional
+/// AI narrative generated FROM those numbers (labelled via `aiSummaryMeta`). One row per branch and
+/// branch-local day; recomputing the same day updates the row.
+model AnalyticsSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  branchId      String   @db.Uuid
+  /// Branch-local calendar day.
+  day           DateTime @db.Date
+  /// @dentalos/validation `branchDailyMetrics`.
+  metrics       Json
+  aiSummary     String?
+  /// { provider, model, promptVersion } when `aiSummary` is set.
+  aiSummaryMeta Json?
+  generatedAt   DateTime @default(now()) @db.Timestamptz(3)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  branch        Branch   @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, branchId, day])
+  @@index([tenantId])
+  @@index([tenantId, day])
 }

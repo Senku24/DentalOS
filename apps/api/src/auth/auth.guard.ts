@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { PORTAL_KEY } from "./portal-metadata";
 import { type Permission, type Principal, can } from "./roles";
 import { TOKEN_VERIFIER, type TokenVerifier, type VerifiedClaims } from "./token-verifier";
 
@@ -36,6 +37,10 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     if (this.reflector.getAllAndOverride<boolean>("public", [ctx.getHandler(), ctx.getClass()]))
+      return true;
+    // Patient-portal routes (@PortalAuth) are authenticated by PortalGuard with a different key and audience.
+    // Skipping here is safe: a staff token fails PortalGuard, a portal token fails every other route's AuthGuard.
+    if (this.reflector.getAllAndOverride<boolean>(PORTAL_KEY, [ctx.getHandler(), ctx.getClass()]))
       return true;
     const req = ctx.switchToHttp().getRequest();
     const header: string | undefined = req.headers.authorization;

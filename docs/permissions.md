@@ -60,7 +60,11 @@ the patient portal uses a separate self-scoped surface.
 | `comms:templates` | org | ✔ |  |  |  |  |
 | `analytics:branch` | branch | ✔ | ✔ |  |  | ✔ |
 | `analytics:org` | org | ✔ |  |  |  | ✔ |
+| `analytics:self` | self | ✔ |  | ✔ |  |  |
 | `ai:use` | branch | ✔ | ✔ | ✔ |  |  |
+| `ai:clinical` | branch |  |  | ✔ |  |  |
 | `ai:admin` | org | ✔ |  |  |  |  |
+| `portal:manage` | tenant | ✔ | ✔ |  | ✔ |  |
+| `portal:admin` | org | ✔ | ✔ |  |  |  |
 | `audit:read` | org | ✔ |  |  |  |  |
 | `breakglass:use` | org |  |  |  |  |  |

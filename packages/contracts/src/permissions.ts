@@ -85,8 +85,19 @@ export const PERMISSIONS = {
   // Analytics, AI, audit
   "analytics:branch": "branch",
   "analytics:org": "org",
+  /** M4 (ADR 0005 §4.6): a dentist's own performance numbers (self scope; orgWide holders see anyone's). */
+  "analytics:self": "self",
+  /** General AI capabilities (summaries, plan explanations, NL analytics); each one is also gated per role in `AiSetting`. */
   "ai:use": "branch",
+  /** M4 (ADR 0005 §5.4): generate and APPROVE clinical-record drafts (note drafts, voice notes). Approval also needs `clinical:write`. */
+  "ai:clinical": "branch",
+  /** AI feature switches, per-role access, quotas and content-retention setting; usage monitoring. */
   "ai:admin": "org",
+  // Patient portal administration (M4, ADR 0005 §1, §3)
+  /** Invite / suspend / reactivate portal accounts and flag documents portal-visible. */
+  "portal:manage": "tenant",
+  /** Portal booking rules (notice, reschedule limits, bookable services and types). */
+  "portal:admin": "org",
   "audit:read": "org",
   "breakglass:use": "org",
 } as const;
@@ -111,6 +122,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "clinical:amend",
     "plan:write",
     "plan:approve",
+    "ai:clinical",
     "breakglass:use",
   ),
   MANAGER: [
@@ -147,6 +159,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "comms:read",
     "analytics:branch",
     "ai:use",
+    "portal:manage",
+    "portal:admin",
   ],
   DENTIST: [
     "org:read",
@@ -170,7 +184,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "inventory:read",
     "inventory:write",
     "compensation:read",
+    "analytics:self",
     "ai:use",
+    "ai:clinical",
   ],
   RECEPTIONIST: [
     "org:read",
@@ -194,6 +210,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "inventory:read",
     "comms:send",
     "comms:read",
+    // M4 (ADR 0005 §1): front desk verifies identity and invites patients to the portal.
+    "portal:manage",
   ],
   ACCOUNTANT: [
     "org:read",

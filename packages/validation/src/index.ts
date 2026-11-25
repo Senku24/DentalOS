@@ -15,3 +15,7 @@ export * from "./billing";
 export * from "./commissions";
 export * from "./inventory";
 export * from "./notifications";
+// M4 patient portal, analytics and AI
+export * from "./portal";
+export * from "./analytics";
+export * from "./ai";

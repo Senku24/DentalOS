@@ -130,6 +130,16 @@ export const SYSTEM_TEMPLATES = {
     placeholders: ["patientName", "planTitle", "branchName", "branchPhone", "consentLink"],
   },
   TEST_MESSAGE: { purpose: "TRANSACTIONAL", placeholders: ["patientName", "branchName"] },
+  /**
+   * M4 portal login / step-up code (ADR 0005 §1.2). TRANSACTIONAL: sent without marketing consent. The outbox row keeps
+   * `variables.code` only until the message is final: the portal scrub job blanks it (migration 0009 allows that one change).
+   */
+  PORTAL_OTP: { purpose: "TRANSACTIONAL", placeholders: ["clinicName", "code", "validityMinutes"] },
+  /** M4: staff invited the patient to the portal (ADR 0005 §1.5). */
+  PORTAL_INVITE: {
+    purpose: "TRANSACTIONAL",
+    placeholders: ["patientName", "clinicName", "portalLink"],
+  },
 } as const satisfies Record<
   string,
   { purpose: NotificationPurpose; placeholders: readonly string[] }

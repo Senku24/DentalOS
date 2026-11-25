@@ -1,3 +1,4 @@
+import { PORTAL_TOKEN_AUDIENCE } from "@dentalos/validation";
 import { type JWTPayload, type JWTVerifyGetKey, createRemoteJWKSet, jwtVerify } from "jose";
 
 export interface VerifiedClaims {
@@ -24,6 +25,15 @@ export class DevTokenVerifier implements TokenVerifier {
   async verify(token: string): Promise<VerifiedClaims> {
     const { payload } = await jwtVerify(token, this.secret, { algorithms: ["HS256"] });
     if (!payload.sub) throw new Error("missing sub");
+    // Defence in depth (ADR 0005 §1.3): a patient-portal token is never a staff token, even if a misconfigured
+    // PORTAL_JWT_SECRET equalled DEV_JWT_SECRET. createPortalSecrets() also refuses equal secrets.
+    const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (
+      aud.includes(PORTAL_TOKEN_AUDIENCE) ||
+      payload.typ === "portal_access" ||
+      payload.typ === "portal_select"
+    )
+      throw new Error("portal token on a staff route");
     return {
       sub: payload.sub,
       mfa: payload.mfa === true,

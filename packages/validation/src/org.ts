@@ -15,6 +15,7 @@ import {
 } from "./common";
 import { notificationSettings } from "./notifications";
 import { clinicalSettings } from "./plans";
+import { portalSettings } from "./portal";
 
 // ---------------------------------------------------------------------------------------------
 // Tenant (organisation) settings & onboarding — PRD 4.1
@@ -40,6 +41,8 @@ export const tenantSettings = z.strictObject({
   billing: tenantBillingSettings.optional(),
   /** M3 notification knobs (ADR 0004 §10): channels, reminder offsets, quiet hours, implicit consent. */
   notifications: notificationSettings.optional(),
+  /** M4 patient-portal knobs (ADR 0005 §3): master switch, booking notice / limits, bookable types, step-up window. */
+  portal: portalSettings.optional(),
 });
 export type TenantSettings = z.infer<typeof tenantSettings>;
 

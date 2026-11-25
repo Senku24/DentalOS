@@ -176,3 +176,51 @@ export function isRetryableTxError(e: unknown): boolean {
     t.includes("could not serialize access")
   );
 }
+
+// ---------------------------------------------------------------------------------------------
+// M4 patient portal / AI (migration 0009_m4_portal_analytics_ai, docs/adr/0005-portal-analytics-ai-rules.md)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Stable codes raised by the 0009 triggers (SQLSTATE P0001, message prefix `<code>:`). Answer them as `{ error: <code> }`
+ * with the status from `M4_GUARD_HTTP` (409 unless noted). Validate in the service first for a clearer message; the DB is
+ * the final authority under races.
+ *   portal_account_state / portal_identity_unverified / portal_patient_merged   account lifecycle, staff-verified identity
+ *   portal_account_inactive   no session / signature for an account that is not ACTIVE (403)
+ *   portal_session_revoked / portal_session_link_mismatch   a revoked session is final; rotation stays in its family
+ *   portal_consent_invalid    a portal e-signature needs a GRANTED DIGITAL consent
+ *   otp_state / otp_expired / otp_locked   one-time code rules (400 expired, 429 locked)
+ *   ai_draft_state / ai_draft_expired   draft status machine; frozen after DRAFT; approval needs the written note
+ *   ai_note_invalid           an AI-assisted note must reference a pending draft of its encounter
+ */
+export const M4_GUARD_CODES = [
+  "portal_account_state",
+  "portal_identity_unverified",
+  "portal_patient_merged",
+  "portal_account_inactive",
+  "portal_session_revoked",
+  "portal_session_link_mismatch",
+  "portal_consent_invalid",
+  "otp_state",
+  "otp_expired",
+  "otp_locked",
+  "ai_draft_state",
+  "ai_draft_expired",
+  "ai_note_invalid",
+] as const;
+export type M4GuardCode = (typeof M4_GUARD_CODES)[number];
+
+/** HTTP status per code: everything is a 409 conflict with current state, except these. */
+export const M4_GUARD_HTTP: Readonly<Partial<Record<M4GuardCode, 400 | 403 | 429>>> = {
+  portal_account_inactive: 403,
+  portal_identity_unverified: 400,
+  otp_expired: 400,
+  otp_locked: 429,
+};
+
+/** The M4 trigger code in a database error, or null. */
+export function m4GuardError(e: unknown): M4GuardCode | null {
+  const t = text(e);
+  if (!t.includes("P0001")) return null;
+  return M4_GUARD_CODES.find((c) => t.includes(`${c}:`)) ?? null;
+}
